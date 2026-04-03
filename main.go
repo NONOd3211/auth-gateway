@@ -7,8 +7,10 @@ import (
 	"auth-gateway/middleware"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 )
@@ -21,36 +23,69 @@ func main() {
 	}
 
 	gin.SetMode(gin.ReleaseMode)
-	r := gin.Default()
 
+	// User panel on PORT (9900)
+	go runUserPanel(cfg)
+
+	// Admin panel on ADMIN_PORT (9911)
+	go runAdminPanel(cfg)
+
+	fmt.Printf("🚀 Auth Gateway\n")
+	fmt.Printf("👤 User Panel: http://localhost:%s\n", cfg.Port)
+	fmt.Printf("🔐 Admin Panel: http://localhost:%s\n", cfg.AdminPort)
+	fmt.Printf("📡 Upstream: %s\n", cfg.UpstreamURL)
+
+	// Wait forever
+	select {}
+}
+
+func runUserPanel(cfg *config.Config) {
+	r := gin.New()
+	r.Use(gin.Recovery())
 	r.Use(middleware.CORS(cfg.AllowedOrigins))
-	r.Use(middleware.AdminCodeAuth(cfg))
 
-	// Static web UI files (no auth required)
-	// Serve existing files directly, fallback to index.html for SPA routing
+	// User panel - static files
 	r.NoRoute(func(c *gin.Context) {
 		path := filepath.Join("/webui/dist", c.Request.URL.Path)
 		if _, err := os.Stat(path); err == nil {
 			c.File(path)
 		} else {
+			// Serve user index.html for SPA
 			c.File("/webui/dist/index.html")
 		}
 	})
 
+	// Public API
+	r.GET("/api/lookup", handler.LookupToken)
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
 
-	// Public API routes (no auth required)
-	api := r.Group("/api")
-	{
-		api.GET("/lookup", handler.LookupToken)
+	log.Printf("👤 User panel listening on :%s", cfg.Port)
+	if err := r.Run(":" + cfg.Port); err != nil {
+		log.Fatalf("User panel failed: %v", err)
 	}
+}
 
-	// Admin API routes (require ?code=xxx query parameter)
-	admin := api.Group("/admin")
-	admin.Use(middleware.RequireAdmin())
-	admin.Use(middleware.AdminAuth(cfg))
+func runAdminPanel(cfg *config.Config) {
+	r := gin.New()
+	r.Use(gin.Recovery())
+	r.Use(middleware.CORS(cfg.AllowedOrigins))
+	r.Use(middleware.AdminAuth(cfg))
+
+	// Admin panel - static files (always admin mode)
+	r.NoRoute(func(c *gin.Context) {
+		path := filepath.Join("/webui/dist", c.Request.URL.Path)
+		if _, err := os.Stat(path); err == nil {
+			c.File(path)
+		} else {
+			// Serve admin index.html
+			c.File("/webui/dist/index.html")
+		}
+	})
+
+	// Admin API (auth required)
+	admin := r.Group("/api/admin")
 	{
 		admin.GET("/tokens", handler.ListTokens)
 		admin.POST("/tokens", handler.CreateToken)
@@ -64,7 +99,7 @@ func main() {
 		admin.GET("/usage/token/:id", handler.GetUsageByToken)
 	}
 
-	// Proxy routes (require Bearer token auth)
+	// Proxy routes (token auth)
 	proxy := r.Group("/")
 	proxy.Use(middleware.TokenAuth())
 	{
@@ -72,12 +107,8 @@ func main() {
 		proxy.Any("/v1beta/*path", handler.ProxyRequest(cfg))
 	}
 
-	fmt.Printf("🚀 Auth Gateway running on :%s\n", cfg.Port)
-	fmt.Printf("📡 Upstream: %s\n", cfg.UpstreamURL)
-	fmt.Printf("🔐 Admin Password: %s\n", cfg.AdminPassword)
-	fmt.Printf("🔑 Admin Code: %s\n", cfg.AdminCode)
-
-	if err := r.Run(":" + cfg.Port); err != nil {
-		log.Fatalf("Failed to start server: %v", err)
+	log.Printf("🔐 Admin panel listening on :%s", cfg.AdminPort)
+	if err := r.Run(":" + cfg.AdminPort); err != nil {
+		log.Fatalf("Admin panel failed: %v", err)
 	}
 }

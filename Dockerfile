@@ -28,10 +28,12 @@ COPY --from=webui /webui/dist /webui/dist
 
 ENV TZ=Asia/Shanghai
 ENV UPSTREAM_URL=http://192.168.1.237:8317
-ENV PORT=8080
+ENV PORT=9900
+ENV ADMIN_PORT=9911
+ENV ADMIN_PASSWORD=admin123
 ENV DATABASE_URL=/data/gateway.db
 
-EXPOSE 8080
+EXPOSE 9900 9911
 
 RUN mkdir /data
 

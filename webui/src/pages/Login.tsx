@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/auth'
 
@@ -7,32 +7,11 @@ export function Login() {
   const [error, setError] = useState('')
   const { login } = useAuthStore()
   const navigate = useNavigate()
-  const [isAdminRoute, setIsAdminRoute] = useState(false)
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
-    const code = params.get('code')
-    if (code) {
-      setIsAdminRoute(true)
-      // Store admin code in sessionStorage for form submission
-      sessionStorage.setItem('admin_code', code)
-    } else {
-      // Try to get from sessionStorage
-      const storedCode = sessionStorage.getItem('admin_code')
-      if (storedCode) {
-        setIsAdminRoute(true)
-      }
-    }
-  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     try {
-      // Get code from sessionStorage first, then fallback to URL
-      const code = sessionStorage.getItem('admin_code') || ''
-      const url = code ? `/api/admin/tokens?code=${code}` : '/api/admin/tokens'
-
-      const res = await fetch(url, {
+      const res = await fetch('/api/admin/tokens', {
         headers: { Authorization: `Bearer ${password}` },
       })
       if (res.ok) {
@@ -50,9 +29,7 @@ export function Login() {
     <div style={styles.container}>
       <div style={styles.card}>
         <h1 style={styles.title}>🔐 Auth Gateway</h1>
-        <p style={styles.subtitle}>
-          {isAdminRoute ? '请输入管理员密码' : '请输入管理员密码访问后台'}
-        </p>
+        <p style={styles.subtitle}>请输入管理员密码</p>
         <form onSubmit={handleSubmit} style={styles.form}>
           <input
             type="password"
@@ -64,11 +41,6 @@ export function Login() {
           {error && <p style={styles.error}>{error}</p>}
           <button type="submit" style={styles.button}>登录</button>
         </form>
-        {!isAdminRoute && (
-          <p style={styles.hint}>
-            管理员请使用 <code>?code=ADMIN_CODE</code> 访问
-          </p>
-        )}
       </div>
     </div>
   )
