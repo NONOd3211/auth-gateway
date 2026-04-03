@@ -7,6 +7,9 @@ import (
 	"auth-gateway/middleware"
 	"fmt"
 	"log"
+	"net/http"
+	"os"
+	"path/filepath"
 
 	"github.com/gin-gonic/gin"
 )
@@ -25,7 +28,15 @@ func main() {
 	r.Use(middleware.AdminCodeAuth(cfg))
 
 	// Static web UI files (no auth required)
-	r.Static("/", "/webui/dist")
+	// Serve existing files directly, fallback to index.html for SPA routing
+	r.NoRoute(func(c *gin.Context) {
+		path := filepath.Join("/webui/dist", c.Request.URL.Path)
+		if _, err := os.Stat(path); err == nil {
+			c.File(path)
+		} else {
+			c.File("/webui/dist/index.html")
+		}
+	})
 
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok"})
