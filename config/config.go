@@ -1,6 +1,8 @@
 package config
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"os"
 )
 
@@ -20,10 +22,10 @@ func Load() *Config {
 		allowedOrigins = ""
 	}
 
+	// Generate random JWT secret if not provided
 	jwtSecret := getEnv("JWT_SECRET", "")
-	// Reject default placeholder secret
-	if jwtSecret == "change-this-secret-in-production" || jwtSecret == "" {
-		jwtSecret = ""
+	if jwtSecret == "" {
+		jwtSecret = generateRandomSecret(32)
 	}
 
 	return &Config{
@@ -41,4 +43,13 @@ func getEnv(key, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+func generateRandomSecret(length int) string {
+	bytes := make([]byte, length)
+	if _, err := rand.Read(bytes); err != nil {
+		// Fallback to a default if crypto/rand fails
+		return "default-secret-change-me"
+	}
+	return hex.EncodeToString(bytes)
 }
