@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { tokenApi, usageApi, UsageStats } from '../api/client'
+import { usageApi, UsageStats } from '../api/client'
 
 export function Dashboard() {
   const [stats, setStats] = useState<UsageStats | null>(null)

@@ -16,7 +16,6 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
 function App() {
   const [isAdmin, setIsAdmin] = useState(false)
-  const { isAuthenticated } = useAuthStore()
 
   useEffect(() => {
     // Check URL for admin code
