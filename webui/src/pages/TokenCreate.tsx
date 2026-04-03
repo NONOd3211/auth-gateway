@@ -10,6 +10,9 @@ export function TokenCreate() {
     expires_at: '',
     user_id: '',
     description: '',
+    hourly_limit: false,
+    weekly_limit: false,
+    weekly_requests: 0,
   })
   const [createdToken, setCreatedToken] = useState<string | null>(null)
 
@@ -20,9 +23,14 @@ export function TokenCreate() {
       max_requests: Number(form.max_requests),
       user_id: form.user_id,
       description: form.description,
+      hourly_limit: form.hourly_limit,
+      weekly_limit: form.weekly_limit,
     }
     if (form.expires_at) {
       data.expires_at = new Date(form.expires_at).toISOString()
+    }
+    if (form.weekly_limit) {
+      data.weekly_requests = Number(form.weekly_requests)
     }
 
     const res = await tokenApi.create(data)
@@ -113,6 +121,39 @@ export function TokenCreate() {
           />
         </div>
 
+        <div style={styles.field}>
+          <label style={styles.checkboxLabel}>
+            <input
+              type="checkbox"
+              checked={form.hourly_limit}
+              onChange={(e) => setForm({ ...form, hourly_limit: e.target.checked })}
+            />
+            启用 5 小时限制
+          </label>
+          <small style={styles.hint}>启用后，Token 创建 5 小时后自动过期</small>
+        </div>
+
+        <div style={styles.field}>
+          <label style={styles.checkboxLabel}>
+            <input
+              type="checkbox"
+              checked={form.weekly_limit}
+              onChange={(e) => setForm({ ...form, weekly_limit: e.target.checked })}
+            />
+            启用周请求限制
+          </label>
+          {form.weekly_limit && (
+            <input
+              type="number"
+              value={form.weekly_requests}
+              onChange={(e) => setForm({ ...form, weekly_requests: Number(e.target.value) })}
+              placeholder="每周请求次数"
+              style={styles.input}
+            />
+          )}
+          <small style={styles.hint}>启用后，每周请求次数达到限制后无法使用</small>
+        </div>
+
         <div style={styles.buttons}>
           <button type="submit" style={styles.submitBtn}>创建 Token</button>
           <button type="button" onClick={() => navigate('/tokens')} style={styles.cancelBtn}>取消</button>
@@ -148,6 +189,12 @@ const styles: Record<string, React.CSSProperties> = {
   hint: {
     color: '#888',
     fontSize: '0.75rem',
+  },
+  checkboxLabel: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.5rem',
+    cursor: 'pointer',
   },
   buttons: {
     display: 'flex',

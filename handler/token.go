@@ -12,11 +12,14 @@ import (
 )
 
 type CreateTokenRequest struct {
-	Name         string     `json:"name"`
-	ExpiresAt    *time.Time `json:"expires_at"`
-	MaxRequests  int        `json:"max_requests"`
-	UserID       string     `json:"user_id"`
-	Description  string     `json:"description"`
+	Name           string     `json:"name"`
+	ExpiresAt      *time.Time `json:"expires_at"`
+	MaxRequests    int        `json:"max_requests"`
+	UserID         string     `json:"user_id"`
+	Description    string     `json:"description"`
+	HourlyLimit    bool       `json:"hourly_limit"`
+	WeeklyLimit    bool       `json:"weekly_limit"`
+	WeeklyRequests int        `json:"weekly_requests"`
 }
 
 type UpdateTokenRequest struct {
@@ -60,6 +63,42 @@ func GetToken(c *gin.Context) {
 	})
 }
 
+// LookupToken allows users to look up their token by token value (public endpoint)
+func LookupToken(c *gin.Context) {
+	tokenValue := c.Query("token")
+	if tokenValue == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "token parameter required"})
+		return
+	}
+
+	var token models.Token
+	if err := database.DB.Where("token = ?", tokenValue).First(&token).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "token not found"})
+		return
+	}
+
+	// Get usage stats
+	var totalRequests int64
+	database.DB.Model(&models.UsageRecord{}).Where("token_id = ?", token.ID).Count(&totalRequests)
+
+	var successRequests int64
+	database.DB.Model(&models.UsageRecord{}).Where("token_id = ? AND success = ?", token.ID, true).Count(&successRequests)
+
+	c.JSON(http.StatusOK, gin.H{
+		"name":            token.Name,
+		"max_requests":    token.MaxRequests,
+		"used_requests":   token.UsedRequests,
+		"total_requests":  totalRequests,
+		"success_count":   successRequests,
+		"enabled":        token.Enabled,
+		"hourly_limit":    token.HourlyLimit,
+		"hourly_used":     token.HourlyUsed,
+		"weekly_limit":    token.WeeklyLimit,
+		"weekly_used":     token.WeeklyUsed,
+		"created_at":      token.CreatedAt,
+	})
+}
+
 func CreateToken(c *gin.Context) {
 	var req CreateTokenRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -74,15 +113,23 @@ func CreateToken(c *gin.Context) {
 	}
 
 	token := models.Token{
-		ID:          uuid.New().String(),
-		Token:       tokenString,
-		Name:        req.Name,
-		CreatedAt:   time.Now(),
-		ExpiresAt:   req.ExpiresAt,
-		MaxRequests: req.MaxRequests,
-		UserID:      req.UserID,
-		Description: req.Description,
-		Enabled:     true,
+		ID:              uuid.New().String(),
+		Token:           tokenString,
+		Name:            req.Name,
+		CreatedAt:       time.Now(),
+		ExpiresAt:       req.ExpiresAt,
+		MaxRequests:     req.MaxRequests,
+		UserID:          req.UserID,
+		Description:     req.Description,
+		HourlyLimit:     req.HourlyLimit,
+		HourlyRequests:  0,
+		HourlyUsed:      0,
+		HourlyResetAt:   time.Now().Add(5 * time.Hour),
+		WeeklyLimit:     req.WeeklyLimit,
+		WeeklyRequests:  req.WeeklyRequests,
+		WeeklyUsed:      0,
+		WeeklyResetAt:   getWeeklyResetTime(),
+		Enabled:         true,
 	}
 
 	if err := database.DB.Create(&token).Error; err != nil {
@@ -161,4 +208,14 @@ func generateTokenString() (string, error) {
 		return "", err
 	}
 	return "sk-" + string(hash)[:32], nil
+}
+
+func getWeeklyResetTime() time.Time {
+	now := time.Now()
+	// Reset at the beginning of next week (Monday)
+	daysUntilMonday := (7 - int(now.Weekday())) % 7
+	if daysUntilMonday == 0 {
+		daysUntilMonday = 7
+	}
+	return now.AddDate(0, 0, daysUntilMonday).Truncate(24 * time.Hour)
 }

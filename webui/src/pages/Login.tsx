@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/auth'
 
@@ -7,6 +7,15 @@ export function Login() {
   const [error, setError] = useState('')
   const { login } = useAuthStore()
   const navigate = useNavigate()
+  const [isAdminRoute, setIsAdminRoute] = useState(false)
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const code = params.get('code')
+    if (code) {
+      setIsAdminRoute(true)
+    }
+  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -29,7 +38,9 @@ export function Login() {
     <div style={styles.container}>
       <div style={styles.card}>
         <h1 style={styles.title}>🔐 Auth Gateway</h1>
-        <p style={styles.subtitle}>请输入管理员密码</p>
+        <p style={styles.subtitle}>
+          {isAdminRoute ? '请输入管理员密码' : '请输入管理员密码访问后台'}
+        </p>
         <form onSubmit={handleSubmit} style={styles.form}>
           <input
             type="password"
@@ -41,6 +52,11 @@ export function Login() {
           {error && <p style={styles.error}>{error}</p>}
           <button type="submit" style={styles.button}>登录</button>
         </form>
+        {!isAdminRoute && (
+          <p style={styles.hint}>
+            管理员请使用 <code>?code=ADMIN_CODE</code> 访问
+          </p>
+        )}
       </div>
     </div>
   )
@@ -95,5 +111,11 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#f44336',
     textAlign: 'center',
     fontSize: '0.875rem',
+  },
+  hint: {
+    color: '#666',
+    textAlign: 'center',
+    fontSize: '0.75rem',
+    marginTop: '1rem',
   },
 }

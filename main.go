@@ -28,6 +28,12 @@ func main() {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
 
+	// Public API routes (no auth required)
+	api := r.Group("/api")
+	{
+		api.GET("/lookup", handler.LookupToken)
+	}
+
 	// Admin API routes (require ?code=xxx query parameter)
 	api := r.Group("/api")
 	{
