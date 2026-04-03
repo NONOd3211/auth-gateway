@@ -57,9 +57,9 @@ jobs:
         with:
           images: ${{ secrets.DOCKER_USERNAME }}/auth-gateway
           tags: |
-            type=ref,event=branch
-            type=sha,prefix=
             type=raw,value=latest,enable={{is_default_branch}}
+            type=schedule
+            type=ref,event=tag
 
       - name: Build and push
         uses: docker/build-push-action@v6
