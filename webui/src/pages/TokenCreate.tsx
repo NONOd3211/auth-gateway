@@ -2,6 +2,40 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { tokenApi } from '../api/client'
 
+const copyToClipboard = (text: string) => {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(() => {
+      alert('已复制到剪贴板')
+    }).catch(() => {
+      const textarea = document.createElement('textarea')
+      textarea.value = text
+      textarea.style.cssText = 'position:fixed;left:-9999px;top:-9999px'
+      document.body.appendChild(textarea)
+      textarea.select()
+      try {
+        document.execCommand('copy')
+        alert('已复制到剪贴板')
+      } catch {
+        alert('复制失败，请手动选择复制')
+      }
+      document.body.removeChild(textarea)
+    })
+  } else {
+    const textarea = document.createElement('textarea')
+    textarea.value = text
+    textarea.style.cssText = 'position:fixed;left:-9999px;top:-9999px'
+    document.body.appendChild(textarea)
+    textarea.select()
+    try {
+      document.execCommand('copy')
+      alert('已复制到剪贴板')
+    } catch {
+      alert('复制失败，请手动选择复制')
+    }
+    document.body.removeChild(textarea)
+  }
+}
+
 export function TokenCreate() {
   const navigate = useNavigate()
   const [form, setForm] = useState({
@@ -16,22 +50,6 @@ export function TokenCreate() {
     weekly_requests: 0,
   })
   const [createdToken, setCreatedToken] = useState<string | null>(null)
-
-  const fallbackCopyText = (text: string) => {
-    const textarea = document.createElement('textarea')
-    textarea.value = text
-    textarea.style.position = 'fixed'
-    textarea.style.opacity = '0'
-    document.body.appendChild(textarea)
-    textarea.select()
-    try {
-      document.execCommand('copy')
-      alert('已复制到剪贴板')
-    } catch {
-      alert('复制失败，请手动选择复制')
-    }
-    document.body.removeChild(textarea)
-  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -65,17 +83,7 @@ export function TokenCreate() {
           <p>请复制保存以下 Token，关闭后将无法再次查看完整 Token：</p>
           <code style={styles.tokenCode}>{createdToken}</code>
           <button
-            onClick={() => {
-              if (navigator.clipboard && navigator.clipboard.writeText) {
-                navigator.clipboard.writeText(createdToken).then(() => {
-                  alert('已复制到剪贴板')
-                }).catch(() => {
-                  fallbackCopyText(createdToken)
-                })
-              } else {
-                fallbackCopyText(createdToken)
-              }
-            }}
+            onClick={() => copyToClipboard(createdToken)}
             style={styles.copyBtn}
           >
             复制 Token
