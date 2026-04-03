@@ -29,7 +29,7 @@ func Init(dbURL string) error {
 		return fmt.Errorf("failed to connect database: %w", err)
 	}
 
-	if err = DB.AutoMigrate(&models.Token{}, &models.UsageRecord{}); err != nil {
+	if err = DB.AutoMigrate(&models.Token{}, &models.UsageRecord{}, &models.APIKey{}, &models.TokenKeyMapping{}); err != nil {
 		return fmt.Errorf("failed to migrate database: %w", err)
 	}
 
