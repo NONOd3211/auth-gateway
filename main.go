@@ -26,9 +26,6 @@ func main() {
 
 	// Static web UI files (no auth required)
 	r.Static("/", "/webui/dist")
-	r.GET("/", func(c *gin.Context) {
-		c.File("/webui/dist/index.html")
-	})
 
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok"})
