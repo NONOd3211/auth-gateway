@@ -24,6 +24,12 @@ func main() {
 	r.Use(middleware.CORS(cfg.AllowedOrigins))
 	r.Use(middleware.AdminCodeAuth(cfg))
 
+	// Static web UI files (no auth required)
+	r.Static("/webui", "/webui/dist")
+	r.GET("/", func(c *gin.Context) {
+		c.File("/webui/dist/index.html")
+	})
+
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
