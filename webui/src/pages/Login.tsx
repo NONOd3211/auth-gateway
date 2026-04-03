@@ -20,7 +20,12 @@ export function Login() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     try {
-      const res = await fetch('/api/admin/tokens', {
+      // Get the code from URL params to pass in the request
+      const params = new URLSearchParams(window.location.search)
+      const code = params.get('code') || ''
+      const url = code ? `/api/admin/tokens?code=${code}` : '/api/admin/tokens'
+
+      const res = await fetch(url, {
         headers: { Authorization: `Bearer ${password}` },
       })
       if (res.ok) {
