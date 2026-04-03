@@ -5,13 +5,54 @@ import (
 	"auth-gateway/database"
 	"auth-gateway/handler"
 	"auth-gateway/middleware"
+	"auth-gateway/models"
+	"auth-gateway/providers"
+	"auth-gateway/providers/minimax"
 	"fmt"
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
+
+var providerManager *providers.ProviderManager
+
+func init() {
+	cfg := config.Load()
+	providerManager = providers.NewProviderManager()
+	providerManager.RegisterProvider(minimax.NewExecutor(cfg))
+
+	// Load API keys from MINIMAX_API_KEYS env var
+	if cfg.MiniMaxAPIKeys != "" {
+		keys := strings.Split(cfg.MiniMaxAPIKeys, ",")
+		for _, key := range keys {
+			key = strings.TrimSpace(key)
+			if key == "" {
+				continue
+			}
+			// Check if key already exists
+			var existing models.APIKey
+			if database.DB.Where("key = ?", key).First(&existing).Error != nil {
+				// Create new
+				apiKey := models.APIKey{
+					ID:        uuid.New().String(),
+					Key:       key,
+					Name:      "Imported Key",
+					Enabled:   true,
+					Healthy:   true,
+					FailCount: 0,
+				}
+				database.DB.Create(&apiKey)
+			}
+		}
+	}
+
+	// Load keys into manager
+	providerManager.LoadAPIKeys()
+}
 
 func main() {
 	cfg := config.Load()
@@ -99,6 +140,13 @@ func runAdminPanel(cfg *config.Config) {
 		admin.GET("/usage", handler.GetUsageStats)
 		admin.GET("/usage/daily", handler.GetUsageByDay)
 		admin.GET("/usage/token/:id", handler.GetUsageByToken)
+
+		admin.GET("/keys", handler.ListAPIKeys)
+		admin.POST("/keys", handler.CreateAPIKey)
+		admin.PUT("/keys/:id", handler.UpdateAPIKey)
+		admin.DELETE("/keys/:id", handler.DeleteAPIKey)
+		admin.POST("/keys/:id/enable", handler.EnableAPIKey)
+		admin.POST("/keys/:id/disable", handler.DisableAPIKey)
 	}
 
 	log.Printf("🔐 Admin panel listening on :%s", cfg.AdminPort)
@@ -108,6 +156,8 @@ func runAdminPanel(cfg *config.Config) {
 }
 
 func runProxy(cfg *config.Config) {
+	handler.SetProviderManager(providerManager)
+
 	r := gin.New()
 	r.Use(gin.Recovery())
 	r.Use(middleware.CORS(cfg.AllowedOrigins))
