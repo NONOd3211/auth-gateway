@@ -24,12 +24,6 @@ export function TokenList() {
     setTokens(tokens.map((t) => (t.id === token.id ? { ...t, enabled: !t.enabled } : t)))
   }
 
-  const handleReset = async (id: string) => {
-    if (!confirm('确定重置使用次数?')) return
-    await tokenApi.resetUsage(id)
-    setTokens(tokens.map((t) => (t.id === id ? { ...t, used_requests: 0 } : t)))
-  }
-
   const handleCopy = (token: string) => {
     navigator.clipboard.writeText(token)
     alert('已复制到剪贴板')
