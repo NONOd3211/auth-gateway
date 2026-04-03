@@ -5,6 +5,8 @@ import (
 	"auth-gateway/database"
 	"auth-gateway/models"
 	"auth-gateway/proxy"
+	"crypto/rand"
+	"encoding/hex"
 	"io"
 	"net/http"
 	"time"
@@ -16,9 +18,16 @@ func ProxyRequest(cfg *config.Config) gin.HandlerFunc {
 	client := proxy.NewClient(cfg.UpstreamURL, cfg.UpstreamAPIKey)
 
 	return func(c *gin.Context) {
-		tokenID, exists := c.Get("token_id")
+		tokenIDValue, exists := c.Get("token_id")
 		if !exists {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			return
+		}
+
+		// Convert tokenID to string early to avoid type issues
+		tokenID, ok := tokenIDValue.(string)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token id type"})
 			return
 		}
 
@@ -47,7 +56,7 @@ func ProxyRequest(cfg *config.Config) gin.HandlerFunc {
 
 		resp, err := client.Forward(c.Request)
 		if err != nil {
-			recordUsage(tokenID.(string), c.Request.URL.Path, "", 0, 0, false, err.Error())
+			recordUsage(tokenID, c.Request.URL.Path, "", 0, 0, false, err.Error())
 			c.JSON(http.StatusBadGateway, gin.H{"error": "upstream error: " + err.Error()})
 			return
 		}
@@ -61,30 +70,41 @@ func ProxyRequest(cfg *config.Config) gin.HandlerFunc {
 
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
-			recordUsage(tokenID.(string), c.Request.URL.Path, "", 0, 0, false, "failed to read response body: "+err.Error())
+			recordUsage(tokenID, c.Request.URL.Path, "", 0, 0, false, "failed to read response body: "+err.Error())
 			c.JSON(http.StatusBadGateway, gin.H{"error": "failed to read response body"})
 			return
 		}
 		c.Data(resp.StatusCode, resp.Header.Get("Content-Type"), body)
 
 		// Update usage count synchronously to avoid race conditions
-		database.DB.Model(&models.Token{}).Where("id = ?", tokenID).UpdateColumn("used_requests", database.DB.Raw("used_requests + 1"))
+		database.DB.Exec("UPDATE tokens SET used_requests = used_requests + 1 WHERE id = ?", tokenID)
 
 		// Update hourly and weekly counters
 		if token.HourlyLimit {
-			database.DB.Model(&models.Token{}).Where("id = ?", tokenID).UpdateColumn("hourly_used", database.DB.Raw("hourly_used + 1"))
+			database.DB.Exec("UPDATE tokens SET hourly_used = hourly_used + 1 WHERE id = ?", tokenID)
 		}
 		if token.WeeklyLimit {
-			database.DB.Model(&models.Token{}).Where("id = ?", tokenID).UpdateColumn("weekly_used", database.DB.Raw("weekly_used + 1"))
+			database.DB.Exec("UPDATE tokens SET weekly_used = weekly_used + 1 WHERE id = ?", tokenID)
 		}
 
-		recordUsage(tokenID.(string), c.Request.URL.Path, "", 0, 0, true, "")
+		recordUsage(tokenID, c.Request.URL.Path, "", 0, 0, true, "")
 	}
 }
 
 func recordUsage(tokenID, path, model string, inputTokens, outputTokens int, success bool, errMsg string) {
+	// Generate unique ID with random suffix to avoid collisions
+	randomBytes := make([]byte, 4)
+	if _, err := rand.Read(randomBytes); err != nil {
+		// Fallback: use timestamp with math random
+		randomBytes = []byte(time.Now().Format("150405"))
+	}
+	// Ensure tokenID is at least 8 characters for ID generation
+	tokenIDPrefix := tokenID
+	if len(tokenIDPrefix) < 8 {
+		tokenIDPrefix = tokenIDPrefix + "xxxxxxxx"[:8-len(tokenIDPrefix)]
+	}
 	record := models.UsageRecord{
-		ID:           time.Now().Format("20060102150405") + "-" + tokenID[:8],
+		ID:           time.Now().Format("20060102150405") + "-" + tokenIDPrefix[:8] + "-" + hex.EncodeToString(randomBytes),
 		TokenID:      tokenID,
 		Timestamp:    time.Now(),
 		Model:        model,
