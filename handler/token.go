@@ -155,10 +155,6 @@ func ResetUsage(c *gin.Context) {
 }
 
 func generateTokenString() (string, error) {
-	bytes := make([]byte, 24)
-	if _, err := uuid.NewRandom(); err != nil {
-		return "", err
-	}
 	tokenID := uuid.New().String()[:24]
 	hash, err := bcrypt.GenerateFromPassword([]byte(tokenID), bcrypt.DefaultCost)
 	if err != nil {
