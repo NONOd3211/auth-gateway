@@ -7,7 +7,6 @@ import (
 	"auth-gateway/middleware"
 	"fmt"
 	"log"
-	"net/http"
 	"os"
 	"path/filepath"
 
