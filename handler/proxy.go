@@ -4,7 +4,8 @@ import (
 	"auth-gateway/config"
 	"auth-gateway/database"
 	"auth-gateway/models"
-	"auth-gateway/proxy"
+	"auth-gateway/providers"
+	"auth-gateway/providers/minimax"
 	"crypto/rand"
 	"encoding/hex"
 	"io"
@@ -14,8 +15,17 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// ProviderManager instance set by main.go
+var providerManager *providers.ProviderManager
+
+// SetProviderManager configures the global ProviderManager instance
+func SetProviderManager(pm *providers.ProviderManager) {
+	providerManager = pm
+}
+
 func ProxyRequest(cfg *config.Config) gin.HandlerFunc {
-	client := proxy.NewClient(cfg.UpstreamURL, cfg.UpstreamAPIKey)
+	// Create executor using config (baseURL and timeout)
+	executor := minimax.NewExecutor(cfg)
 
 	return func(c *gin.Context) {
 		tokenIDValue, exists := c.Get("token_id")
@@ -54,13 +64,27 @@ func ProxyRequest(cfg *config.Config) gin.HandlerFunc {
 		token.CheckAndUpdateLimits()
 		database.DB.Save(&token)
 
-		resp, err := client.Forward(c.Request)
+		// Get API key for this token from ProviderManager
+		apiKey, err := providerManager.GetAPIKeyForToken(tokenID)
+		if err != nil {
+			recordUsage(tokenID, c.Request.URL.Path, "", 0, 0, false, "failed to get API key: "+err.Error())
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "no available API keys"})
+			return
+		}
+
+		// Forward request using executor
+		resp, err := executor.Execute(c.Request, apiKey.Key)
 		if err != nil {
 			recordUsage(tokenID, c.Request.URL.Path, "", 0, 0, false, err.Error())
 			c.JSON(http.StatusBadGateway, gin.H{"error": "upstream error: " + err.Error()})
 			return
 		}
 		defer resp.Body.Close()
+
+		// Check for quota errors and mark key as failed if needed
+		if executor.IsQuotaError(resp) {
+			providerManager.MarkKeyFailed(apiKey.ID)
+		}
 
 		for key, values := range resp.Header {
 			for _, value := range values {
