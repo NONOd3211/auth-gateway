@@ -14,7 +14,8 @@ type Config struct {
 	DatabaseURL    string
 	JWTSecret      string
 	AdminPassword  string
-	UpstreamAPIKey string
+	UpstreamAPIKey  string
+	MiniMaxAPIKeys  string
 	AllowedOrigins string
 }
 
@@ -39,7 +40,8 @@ func Load() *Config {
 		DatabaseURL:    getEnv("DATABASE_URL", "./data/gateway.db"),
 		JWTSecret:      jwtSecret,
 		AdminPassword:  getEnv("ADMIN_PASSWORD", "admin123"),
-		UpstreamAPIKey: getEnv("UPSTREAM_API_KEY", ""),
+		UpstreamAPIKey:  getEnv("UPSTREAM_API_KEY", ""),
+		MiniMaxAPIKeys:  getEnv("MINIMAX_API_KEYS", ""),
 		AllowedOrigins: allowedOrigins,
 	}
 }
