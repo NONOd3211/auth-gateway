@@ -20,8 +20,38 @@ import (
 
 var providerManager *providers.ProviderManager
 
-func init() {
+func main() {
 	cfg := config.Load()
+
+	if err := database.Init(cfg.DatabaseURL); err != nil {
+		log.Fatalf("Failed to init database: %v", err)
+	}
+
+	// Initialize provider manager after database is ready
+	initProviderManager(cfg)
+
+	gin.SetMode(gin.ReleaseMode)
+
+	// User panel on PORT (9900)
+	go runUserPanel(cfg)
+
+	// Admin panel on ADMIN_PORT (9911)
+	go runAdminPanel(cfg)
+
+	// Proxy on PROXY_PORT (9901)
+	go runProxy(cfg)
+
+	fmt.Printf("🚀 Auth Gateway\n")
+	fmt.Printf("👤 User Panel: http://localhost:%s\n", cfg.Port)
+	fmt.Printf("🔐 Admin Panel: http://localhost:%s\n", cfg.AdminPort)
+	fmt.Printf("🔑 Proxy: http://localhost:%s\n", cfg.ProxyPort)
+	fmt.Printf("📡 Upstream: %s\n", cfg.UpstreamURL)
+
+	// Wait forever
+	select {}
+}
+
+func initProviderManager(cfg *config.Config) {
 	providerManager = providers.NewProviderManager()
 	providerManager.RegisterProvider(minimax.NewExecutor(cfg))
 
@@ -52,34 +82,6 @@ func init() {
 
 	// Load keys into manager
 	providerManager.LoadAPIKeys()
-}
-
-func main() {
-	cfg := config.Load()
-
-	if err := database.Init(cfg.DatabaseURL); err != nil {
-		log.Fatalf("Failed to init database: %v", err)
-	}
-
-	gin.SetMode(gin.ReleaseMode)
-
-	// User panel on PORT (9900)
-	go runUserPanel(cfg)
-
-	// Admin panel on ADMIN_PORT (9911)
-	go runAdminPanel(cfg)
-
-	// Proxy on PROXY_PORT (9901)
-	go runProxy(cfg)
-
-	fmt.Printf("🚀 Auth Gateway\n")
-	fmt.Printf("👤 User Panel: http://localhost:%s\n", cfg.Port)
-	fmt.Printf("🔐 Admin Panel: http://localhost:%s\n", cfg.AdminPort)
-	fmt.Printf("🔑 Proxy: http://localhost:%s\n", cfg.ProxyPort)
-	fmt.Printf("📡 Upstream: %s\n", cfg.UpstreamURL)
-
-	// Wait forever
-	select {}
 }
 
 func runUserPanel(cfg *config.Config) {
