@@ -12,6 +12,8 @@ type Config struct {
 	DatabaseURL    string
 	JWTSecret      string
 	AdminPassword  string
+	AdminCode      string
+	UpstreamAPIKey string
 	AllowedOrigins string
 }
 
@@ -28,12 +30,20 @@ func Load() *Config {
 		jwtSecret = generateRandomSecret(32)
 	}
 
+	// Generate random admin code if not provided
+	adminCode := getEnv("ADMIN_CODE", "")
+	if adminCode == "" {
+		adminCode = generateRandomSecret(16)
+	}
+
 	return &Config{
 		UpstreamURL:    getEnv("UPSTREAM_URL", "http://192.168.1.237:8317"),
 		Port:           getEnv("PORT", "8080"),
 		DatabaseURL:    getEnv("DATABASE_URL", "./data/gateway.db"),
 		JWTSecret:      jwtSecret,
 		AdminPassword:  getEnv("ADMIN_PASSWORD", "admin123"),
+		AdminCode:      adminCode,
+		UpstreamAPIKey: getEnv("UPSTREAM_API_KEY", ""),
 		AllowedOrigins: allowedOrigins,
 	}
 }

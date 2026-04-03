@@ -22,14 +22,17 @@ func main() {
 	r := gin.Default()
 
 	r.Use(middleware.CORS(cfg.AllowedOrigins))
+	r.Use(middleware.AdminCodeAuth(cfg))
 
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
 
+	// Admin API routes (require ?code=xxx query parameter)
 	api := r.Group("/api")
 	{
 		admin := api.Group("/admin")
+		admin.Use(middleware.RequireAdmin())
 		admin.Use(middleware.AdminAuth(cfg))
 		{
 			admin.GET("/tokens", handler.ListTokens)
@@ -45,6 +48,7 @@ func main() {
 		}
 	}
 
+	// Token auth middleware for proxy routes
 	r.Use(middleware.TokenAuth())
 	{
 		r.Any("/v1/*path", handler.ProxyRequest(cfg))
@@ -54,6 +58,7 @@ func main() {
 	fmt.Printf("🚀 Auth Gateway running on :%s\n", cfg.Port)
 	fmt.Printf("📡 Upstream: %s\n", cfg.UpstreamURL)
 	fmt.Printf("🔐 Admin Password: %s\n", cfg.AdminPassword)
+	fmt.Printf("🔑 Admin Code: %s\n", cfg.AdminCode)
 
 	if err := r.Run(":" + cfg.Port); err != nil {
 		log.Fatalf("Failed to start server: %v", err)

@@ -9,13 +9,15 @@ import (
 )
 
 type Client struct {
-	baseURL    string
-	httpClient *http.Client
+	baseURL     string
+	upstreamKey string
+	httpClient  *http.Client
 }
 
-func NewClient(baseURL string) *Client {
+func NewClient(baseURL string, upstreamKey string) *Client {
 	return &Client{
-		baseURL: baseURL,
+		baseURL:     baseURL,
+		upstreamKey: upstreamKey,
 		httpClient: &http.Client{
 			Timeout: 10 * time.Minute,
 		},
@@ -38,6 +40,11 @@ func (c *Client) Forward(req *http.Request) (*http.Response, error) {
 	proxyReq, err := http.NewRequest(req.Method, targetURL.String(), bytes.NewReader(body))
 	if err != nil {
 		return nil, err
+	}
+
+	// Add upstream API key if configured
+	if c.upstreamKey != "" {
+		proxyReq.Header.Set("Authorization", "Bearer "+c.upstreamKey)
 	}
 
 	for key, values := range req.Header {
