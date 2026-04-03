@@ -69,9 +69,8 @@ func runAdminPanel(cfg *config.Config) {
 	r := gin.New()
 	r.Use(gin.Recovery())
 	r.Use(middleware.CORS(cfg.AllowedOrigins))
-	r.Use(middleware.AdminAuth(cfg))
 
-	// Admin panel - static files (always admin mode)
+	// Admin panel - static files (no auth required for web UI)
 	r.NoRoute(func(c *gin.Context) {
 		path := filepath.Join("/webui/dist", c.Request.URL.Path)
 		if _, err := os.Stat(path); err == nil {
@@ -84,6 +83,7 @@ func runAdminPanel(cfg *config.Config) {
 
 	// Admin API (auth required)
 	admin := r.Group("/api/admin")
+	admin.Use(middleware.AdminAuth(cfg))
 	{
 		admin.GET("/tokens", handler.ListTokens)
 		admin.POST("/tokens", handler.CreateToken)
