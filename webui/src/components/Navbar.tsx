@@ -18,6 +18,7 @@ export function Navbar() {
       <div style={styles.links}>
         <Link to="/" style={styles.link}>仪表盘</Link>
         <Link to="/tokens" style={styles.link}>Token 管理</Link>
+        <Link to="/keys" style={styles.link}>API Keys</Link>
         <button onClick={handleLogout} style={styles.logoutBtn}>退出</button>
       </div>
     </nav>

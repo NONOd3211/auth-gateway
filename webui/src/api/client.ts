@@ -31,6 +31,16 @@ export interface Token {
   weekly_used: number
 }
 
+export interface APIKey {
+  id: string
+  key: string
+  name: string
+  enabled: boolean
+  healthy: boolean
+  fail_count: number
+  created_at: string
+}
+
 export interface UsageStats {
   total_requests: number
   success_count: number
@@ -47,6 +57,15 @@ export const tokenApi = {
   update: (id: string, data: Partial<Token>) => api.put(`/tokens/${id}`, data),
   delete: (id: string) => api.delete(`/tokens/${id}`),
   resetUsage: (id: string) => api.post(`/tokens/${id}/reset`),
+}
+
+export const apiKeyApi = {
+  list: () => api.get<{ keys: APIKey[] }>('/keys'),
+  create: (data: { key: string; name: string }) => api.post('/keys', data),
+  update: (id: string, data: Partial<APIKey>) => api.put(`/keys/${id}`, data),
+  delete: (id: string) => api.delete(`/keys/${id}`),
+  enable: (id: string) => api.post(`/keys/${id}/enable`),
+  disable: (id: string) => api.post(`/keys/${id}/disable`),
 }
 
 export const usageApi = {
