@@ -45,7 +45,6 @@ func main() {
 	fmt.Printf("👤 User Panel: http://localhost:%s\n", cfg.Port)
 	fmt.Printf("🔐 Admin Panel: http://localhost:%s\n", cfg.AdminPort)
 	fmt.Printf("🔑 Proxy: http://localhost:%s\n", cfg.ProxyPort)
-	fmt.Printf("📡 Upstream: %s\n", cfg.UpstreamURL)
 
 	// Wait forever
 	select {}
