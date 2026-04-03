@@ -1,0 +1,90 @@
+package handler
+
+import (
+	"auth-gateway/database"
+	"auth-gateway/models"
+	"net/http"
+	"time"
+
+	"github.com/gin-gonic/gin"
+)
+
+type UsageStats struct {
+	TotalRequests  int64 `json:"total_requests"`
+	SuccessCount   int64 `json:"success_count"`
+	FailureCount   int64 `json:"failure_count"`
+	TotalTokens    int64 `json:"total_tokens"`
+	InputTokens    int64 `json:"input_tokens"`
+	OutputTokens   int64 `json:"output_tokens"`
+}
+
+func GetUsageStats(c *gin.Context) {
+	tokenID := c.Query("token_id")
+	startDate := c.Query("start_date")
+	endDate := c.Query("end_date")
+
+	query := database.DB.Model(&models.UsageRecord{})
+
+	if tokenID != "" {
+		query = query.Where("token_id = ?", tokenID)
+	}
+	if startDate != "" {
+		if t, err := time.Parse("2006-01-02", startDate); err == nil {
+			query = query.Where("timestamp >= ?", t)
+		}
+	}
+	if endDate != "" {
+		if t, err := time.Parse("2006-01-02", endDate); err == nil {
+			query = query.Where("timestamp <= ?", t.Add(24*time.Hour))
+		}
+	}
+
+	var stats UsageStats
+	query.Select("COUNT(*) as total_requests").Scan(&stats.TotalRequests)
+	query.Select("SUM(CASE WHEN success THEN 1 ELSE 0 END) as success_count").Scan(&stats.SuccessCount)
+	query.Select("SUM(CASE WHEN NOT success THEN 1 ELSE 0 END) as failure_count").Scan(&stats.FailureCount)
+	query.Select("SUM(total_tokens) as total_tokens").Scan(&stats.TotalTokens)
+	query.Select("SUM(input_tokens) as input_tokens").Scan(&stats.InputTokens)
+	query.Select("SUM(output_tokens) as output_tokens").Scan(&stats.OutputTokens)
+
+	c.JSON(http.StatusOK, stats)
+}
+
+func GetUsageByToken(c *gin.Context) {
+	tokenID := c.Param("id")
+
+	var records []models.UsageRecord
+	if err := database.DB.Where("token_id = ?", tokenID).Order("timestamp DESC").Limit(100).Find(&records).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"records": records})
+}
+
+func GetUsageByDay(c *gin.Context) {
+	tokenID := c.Query("token_id")
+
+	type DayStats struct {
+		Date          string `json:"date"`
+		Requests      int64  `json:"requests"`
+		TotalTokens   int64  `json:"total_tokens"`
+		InputTokens   int64  `json:"input_tokens"`
+		OutputTokens  int64  `json:"output_tokens"`
+	}
+
+	var results []DayStats
+	query := database.DB.Model(&models.UsageRecord{}).
+		Select("DATE(timestamp) as date, COUNT(*) as requests, SUM(total_tokens) as total_tokens, SUM(input_tokens) as input_tokens, SUM(output_tokens) as output_tokens").
+		Group("DATE(timestamp)").
+		Order("date DESC").
+		Limit(30)
+
+	if tokenID != "" {
+		query = query.Where("token_id = ?", tokenID)
+	}
+
+	query.Scan(&results)
+
+	c.JSON(http.StatusOK, gin.H{"daily": results})
+}

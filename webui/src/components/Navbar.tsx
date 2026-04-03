@@ -1,0 +1,64 @@
+import { useAuthStore } from '../store/auth'
+import { useNavigate, Link } from 'react-router-dom'
+
+export function Navbar() {
+  const { logout } = useAuthStore()
+  const navigate = useNavigate()
+
+  const handleLogout = () => {
+    logout()
+    navigate('/login')
+  }
+
+  return (
+    <nav style={styles.nav}>
+      <div style={styles.logo}>
+        <Link to="/" style={styles.logoLink}>🔐 Auth Gateway</Link>
+      </div>
+      <div style={styles.links}>
+        <Link to="/" style={styles.link}>仪表盘</Link>
+        <Link to="/tokens" style={styles.link}>Token 管理</Link>
+        <Link to="/usage" style={styles.link}>使用统计</Link>
+        <button onClick={handleLogout} style={styles.logoutBtn}>退出</button>
+      </div>
+    </nav>
+  )
+}
+
+const styles: Record<string, React.CSSProperties> = {
+  nav: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '1rem 0',
+    marginBottom: '2rem',
+    borderBottom: '1px solid #444',
+  },
+  logo: {
+    fontSize: '1.25rem',
+    fontWeight: 'bold',
+  },
+  logoLink: {
+    color: '#fff',
+    textDecoration: 'none',
+  },
+  links: {
+    display: 'flex',
+    gap: '1rem',
+    alignItems: 'center',
+  },
+  link: {
+    color: '#aaa',
+    textDecoration: 'none',
+    padding: '0.5rem 1rem',
+    borderRadius: '4px',
+  },
+  logoutBtn: {
+    background: '#dc3545',
+    color: '#fff',
+    border: 'none',
+    padding: '0.5rem 1rem',
+    borderRadius: '4px',
+    cursor: 'pointer',
+  },
+}

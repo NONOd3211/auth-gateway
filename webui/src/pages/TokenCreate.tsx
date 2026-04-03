@@ -1,0 +1,209 @@
+import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { tokenApi } from '../api/client'
+
+export function TokenCreate() {
+  const navigate = useNavigate()
+  const [form, setForm] = useState({
+    name: '',
+    max_requests: 0,
+    expires_at: '',
+    user_id: '',
+    description: '',
+  })
+  const [createdToken, setCreatedToken] = useState<string | null>(null)
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const data: any = {
+      name: form.name,
+      max_requests: Number(form.max_requests),
+      user_id: form.user_id,
+      description: form.description,
+    }
+    if (form.expires_at) {
+      data.expires_at = new Date(form.expires_at).toISOString()
+    }
+
+    const res = await tokenApi.create(data)
+    setCreatedToken(res.data.token.token)
+  }
+
+  if (createdToken) {
+    return (
+      <div style={styles.container}>
+        <h1>✅ Token 创建成功</h1>
+        <div style={styles.successCard}>
+          <p>请复制保存以下 Token，关闭后将无法再次查看完整 Token：</p>
+          <code style={styles.tokenCode}>{createdToken}</code>
+          <button
+            onClick={() => {
+              navigator.clipboard.writeText(createdToken)
+              alert('已复制到剪贴板')
+            }}
+            style={styles.copyBtn}
+          >
+            复制 Token
+          </button>
+          <button onClick={() => navigate('/tokens')} style={styles.backBtn}>
+            返回列表
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div style={styles.container}>
+      <h1>➕ 新建 Token</h1>
+      <form onSubmit={handleSubmit} style={styles.form}>
+        <div style={styles.field}>
+          <label>名称 *</label>
+          <input
+            type="text"
+            value={form.name}
+            onChange={(e) => setForm({ ...form, name: e.target.value })}
+            placeholder="例如：测试环境"
+            required
+            style={styles.input}
+          />
+        </div>
+
+        <div style={styles.field}>
+          <label>最大请求次数</label>
+          <input
+            type="number"
+            value={form.max_requests}
+            onChange={(e) => setForm({ ...form, max_requests: Number(e.target.value) })}
+            placeholder="0 = 不限制"
+            style={styles.input}
+          />
+          <small style={styles.hint}>设置为 0 表示不限制请求次数</small>
+        </div>
+
+        <div style={styles.field}>
+          <label>过期时间</label>
+          <input
+            type="datetime-local"
+            value={form.expires_at}
+            onChange={(e) => setForm({ ...form, expires_at: e.target.value })}
+            style={styles.input}
+          />
+          <small style={styles.hint}>留空表示永不过期</small>
+        </div>
+
+        <div style={styles.field}>
+          <label>用户 ID</label>
+          <input
+            type="text"
+            value={form.user_id}
+            onChange={(e) => setForm({ ...form, user_id: e.target.value })}
+            placeholder="可选，用于区分用户"
+            style={styles.input}
+          />
+        </div>
+
+        <div style={styles.field}>
+          <label>描述</label>
+          <textarea
+            value={form.description}
+            onChange={(e) => setForm({ ...form, description: e.target.value })}
+            placeholder="可选，备注信息"
+            style={{ ...styles.input, minHeight: '80px' }}
+          />
+        </div>
+
+        <div style={styles.buttons}>
+          <button type="submit" style={styles.submitBtn}>创建 Token</button>
+          <button type="button" onClick={() => navigate('/tokens')} style={styles.cancelBtn}>取消</button>
+        </div>
+      </form>
+    </div>
+  )
+}
+
+const styles: Record<string, React.CSSProperties> = {
+  container: {
+    maxWidth: '600px',
+  },
+  form: {
+    background: '#333',
+    padding: '1.5rem',
+    borderRadius: '8px',
+  },
+  field: {
+    marginBottom: '1rem',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.5rem',
+  },
+  input: {
+    padding: '0.75rem',
+    borderRadius: '4px',
+    border: '1px solid #555',
+    background: '#222',
+    color: '#fff',
+    fontSize: '1rem',
+  },
+  hint: {
+    color: '#888',
+    fontSize: '0.75rem',
+  },
+  buttons: {
+    display: 'flex',
+    gap: '1rem',
+    marginTop: '1rem',
+  },
+  submitBtn: {
+    flex: 1,
+    padding: '0.75rem',
+    borderRadius: '4px',
+    border: 'none',
+    background: '#4CAF50',
+    color: '#fff',
+    fontSize: '1rem',
+    cursor: 'pointer',
+  },
+  cancelBtn: {
+    flex: 1,
+    padding: '0.75rem',
+    borderRadius: '4px',
+    border: 'none',
+    background: '#555',
+    color: '#fff',
+    fontSize: '1rem',
+    cursor: 'pointer',
+  },
+  successCard: {
+    background: '#333',
+    padding: '1.5rem',
+    borderRadius: '8px',
+    textAlign: 'center',
+  },
+  tokenCode: {
+    display: 'block',
+    background: '#222',
+    padding: '1rem',
+    borderRadius: '4px',
+    margin: '1rem 0',
+    wordBreak: 'break-all',
+    fontSize: '1rem',
+  },
+  copyBtn: {
+    background: '#2196F3',
+    color: '#fff',
+    border: 'none',
+    padding: '0.75rem 1.5rem',
+    borderRadius: '4px',
+    cursor: 'pointer',
+    marginRight: '0.5rem',
+  },
+  backBtn: {
+    background: '#555',
+    color: '#fff',
+    border: 'none',
+    padding: '0.75rem 1.5rem',
+    borderRadius: '4px',
+    cursor: 'pointer',
+  },
+}

@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  auth-gateway:
+    build: .
+    container_name: auth-gateway
+    ports:
+      - "8080:8080"
+    environment:
+      - UPSTREAM_URL=http://192.168.1.237:8317
+      - PORT=8080
+      - DATABASE_URL=/data/gateway.db
+      - JWT_SECRET=your-production-secret-key
+      - ADMIN_PASSWORD=your-admin-password
+      - ALLOWED_ORIGINS=*
+    volumes:
+      - ./data:/data
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
