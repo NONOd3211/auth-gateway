@@ -14,15 +14,22 @@ export function Login() {
     const code = params.get('code')
     if (code) {
       setIsAdminRoute(true)
+      // Store admin code in sessionStorage for form submission
+      sessionStorage.setItem('admin_code', code)
+    } else {
+      // Try to get from sessionStorage
+      const storedCode = sessionStorage.getItem('admin_code')
+      if (storedCode) {
+        setIsAdminRoute(true)
+      }
     }
   }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     try {
-      // Get the code from URL params to pass in the request
-      const params = new URLSearchParams(window.location.search)
-      const code = params.get('code') || ''
+      // Get code from sessionStorage first, then fallback to URL
+      const code = sessionStorage.getItem('admin_code') || ''
       const url = code ? `/api/admin/tokens?code=${code}` : '/api/admin/tokens'
 
       const res = await fetch(url, {
