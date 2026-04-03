@@ -14,13 +14,25 @@ type Config struct {
 }
 
 func Load() *Config {
+	allowedOrigins := getEnv("ALLOWED_ORIGINS", "")
+	// Disallow wildcard "*" for security
+	if allowedOrigins == "*" {
+		allowedOrigins = ""
+	}
+
+	jwtSecret := getEnv("JWT_SECRET", "")
+	// Reject default placeholder secret
+	if jwtSecret == "change-this-secret-in-production" || jwtSecret == "" {
+		jwtSecret = ""
+	}
+
 	return &Config{
 		UpstreamURL:    getEnv("UPSTREAM_URL", "http://192.168.1.237:8317"),
 		Port:           getEnv("PORT", "8080"),
 		DatabaseURL:    getEnv("DATABASE_URL", "./data/gateway.db"),
-		JWTSecret:      getEnv("JWT_SECRET", "change-this-secret-in-production"),
+		JWTSecret:      jwtSecret,
 		AdminPassword:  getEnv("ADMIN_PASSWORD", "admin123"),
-		AllowedOrigins: getEnv("ALLOWED_ORIGINS", "*"),
+		AllowedOrigins: allowedOrigins,
 	}
 }
 

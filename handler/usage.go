@@ -29,14 +29,20 @@ func GetUsageStats(c *gin.Context) {
 		query = query.Where("token_id = ?", tokenID)
 	}
 	if startDate != "" {
-		if t, err := time.Parse("2006-01-02", startDate); err == nil {
-			query = query.Where("timestamp >= ?", t)
+		t, err := time.Parse("2006-01-02", startDate)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid start_date format, expected YYYY-MM-DD"})
+			return
 		}
+		query = query.Where("timestamp >= ?", t)
 	}
 	if endDate != "" {
-		if t, err := time.Parse("2006-01-02", endDate); err == nil {
-			query = query.Where("timestamp <= ?", t.Add(24*time.Hour))
+		t, err := time.Parse("2006-01-02", endDate)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid end_date format, expected YYYY-MM-DD"})
+			return
 		}
+		query = query.Where("timestamp <= ?", t.Add(24*time.Hour))
 	}
 
 	var stats UsageStats
