@@ -35,23 +35,20 @@ func main() {
 	}
 
 	// Admin API routes (require ?code=xxx query parameter)
-	api := r.Group("/api")
+	admin := api.Group("/admin")
+	admin.Use(middleware.RequireAdmin())
+	admin.Use(middleware.AdminAuth(cfg))
 	{
-		admin := api.Group("/admin")
-		admin.Use(middleware.RequireAdmin())
-		admin.Use(middleware.AdminAuth(cfg))
-		{
-			admin.GET("/tokens", handler.ListTokens)
-			admin.POST("/tokens", handler.CreateToken)
-			admin.GET("/tokens/:id", handler.GetToken)
-			admin.PUT("/tokens/:id", handler.UpdateToken)
-			admin.DELETE("/tokens/:id", handler.DeleteToken)
-			admin.POST("/tokens/:id/reset", handler.ResetUsage)
+		admin.GET("/tokens", handler.ListTokens)
+		admin.POST("/tokens", handler.CreateToken)
+		admin.GET("/tokens/:id", handler.GetToken)
+		admin.PUT("/tokens/:id", handler.UpdateToken)
+		admin.DELETE("/tokens/:id", handler.DeleteToken)
+		admin.POST("/tokens/:id/reset", handler.ResetUsage)
 
-			admin.GET("/usage", handler.GetUsageStats)
-			admin.GET("/usage/daily", handler.GetUsageByDay)
-			admin.GET("/usage/token/:id", handler.GetUsageByToken)
-		}
+		admin.GET("/usage", handler.GetUsageStats)
+		admin.GET("/usage/daily", handler.GetUsageByDay)
+		admin.GET("/usage/token/:id", handler.GetUsageByToken)
 	}
 
 	// Token auth middleware for proxy routes
