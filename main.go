@@ -25,7 +25,7 @@ func main() {
 	r.Use(middleware.AdminCodeAuth(cfg))
 
 	// Static web UI files (no auth required)
-	r.Static("/webui", "/webui/dist")
+	r.Static("/", "/webui/dist")
 	r.GET("/", func(c *gin.Context) {
 		c.File("/webui/dist/index.html")
 	})
@@ -57,11 +57,12 @@ func main() {
 		admin.GET("/usage/token/:id", handler.GetUsageByToken)
 	}
 
-	// Token auth middleware for proxy routes
-	r.Use(middleware.TokenAuth())
+	// Proxy routes (require Bearer token auth)
+	proxy := r.Group("/")
+	proxy.Use(middleware.TokenAuth())
 	{
-		r.Any("/v1/*path", handler.ProxyRequest(cfg))
-		r.Any("/v1beta/*path", handler.ProxyRequest(cfg))
+		proxy.Any("/v1/*path", handler.ProxyRequest(cfg))
+		proxy.Any("/v1beta/*path", handler.ProxyRequest(cfg))
 	}
 
 	fmt.Printf("🚀 Auth Gateway running on :%s\n", cfg.Port)
