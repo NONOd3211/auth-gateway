@@ -18,7 +18,6 @@ export function Navbar() {
       <div style={styles.links}>
         <Link to="/" style={styles.link}>仪表盘</Link>
         <Link to="/tokens" style={styles.link}>Token 管理</Link>
-        <Link to="/usage" style={styles.link}>使用统计</Link>
         <button onClick={handleLogout} style={styles.logoutBtn}>退出</button>
       </div>
     </nav>
@@ -32,14 +31,14 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     padding: '1rem 0',
     marginBottom: '2rem',
-    borderBottom: '1px solid #444',
+    borderBottom: '1px solid #ddd',
   },
   logo: {
     fontSize: '1.25rem',
     fontWeight: 'bold',
   },
   logoLink: {
-    color: '#fff',
+    color: '#333',
     textDecoration: 'none',
   },
   links: {
@@ -48,7 +47,7 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'center',
   },
   link: {
-    color: '#aaa',
+    color: '#1976D2',
     textDecoration: 'none',
     padding: '0.5rem 1rem',
     borderRadius: '4px',

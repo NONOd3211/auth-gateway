@@ -3,7 +3,7 @@ import { Login } from './pages/Login'
 import { Dashboard } from './pages/Dashboard'
 import { TokenList } from './pages/TokenList'
 import { TokenCreate } from './pages/TokenCreate'
-import { UsageStats } from './pages/UsageStats'
+import { TokenEdit } from './pages/TokenEdit'
 import { UserPanel } from './pages/UserPanel'
 import { Navbar } from './components/Navbar'
 
@@ -23,7 +23,7 @@ function App() {
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/tokens" element={<TokenList />} />
                 <Route path="/tokens/create" element={<TokenCreate />} />
-                <Route path="/usage" element={<UsageStats />} />
+                <Route path="/tokens/:id" element={<TokenEdit />} />
               </Routes>
             </>
           }

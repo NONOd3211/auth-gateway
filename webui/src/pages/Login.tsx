@@ -54,19 +54,22 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: 'center',
   },
   card: {
-    background: '#333',
+    background: '#fff',
     padding: '2rem',
     borderRadius: '8px',
     width: '100%',
     maxWidth: '400px',
+    boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+    border: '1px solid #ddd',
   },
   title: {
     textAlign: 'center',
     marginBottom: '0.5rem',
+    color: '#333',
   },
   subtitle: {
     textAlign: 'center',
-    color: '#888',
+    color: '#666',
     marginBottom: '1.5rem',
   },
   form: {
@@ -77,9 +80,9 @@ const styles: Record<string, React.CSSProperties> = {
   input: {
     padding: '0.75rem',
     borderRadius: '4px',
-    border: '1px solid #555',
-    background: '#222',
-    color: '#fff',
+    border: '1px solid #ccc',
+    background: '#fff',
+    color: '#333',
     fontSize: '1rem',
   },
   button: {
@@ -95,11 +98,5 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#f44336',
     textAlign: 'center',
     fontSize: '0.875rem',
-  },
-  hint: {
-    color: '#666',
-    textAlign: 'center',
-    fontSize: '0.75rem',
-    marginTop: '1rem',
   },
 }

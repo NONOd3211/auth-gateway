@@ -28,9 +28,13 @@ func main() {
 	// Admin panel on ADMIN_PORT (9911)
 	go runAdminPanel(cfg)
 
+	// Proxy on PROXY_PORT (9901)
+	go runProxy(cfg)
+
 	fmt.Printf("🚀 Auth Gateway\n")
 	fmt.Printf("👤 User Panel: http://localhost:%s\n", cfg.Port)
 	fmt.Printf("🔐 Admin Panel: http://localhost:%s\n", cfg.AdminPort)
+	fmt.Printf("🔑 Proxy: http://localhost:%s\n", cfg.ProxyPort)
 	fmt.Printf("📡 Upstream: %s\n", cfg.UpstreamURL)
 
 	// Wait forever
@@ -97,6 +101,17 @@ func runAdminPanel(cfg *config.Config) {
 		admin.GET("/usage/token/:id", handler.GetUsageByToken)
 	}
 
+	log.Printf("🔐 Admin panel listening on :%s", cfg.AdminPort)
+	if err := r.Run(":" + cfg.AdminPort); err != nil {
+		log.Fatalf("Admin panel failed: %v", err)
+	}
+}
+
+func runProxy(cfg *config.Config) {
+	r := gin.New()
+	r.Use(gin.Recovery())
+	r.Use(middleware.CORS(cfg.AllowedOrigins))
+
 	// Proxy routes (token auth)
 	proxy := r.Group("/")
 	proxy.Use(middleware.TokenAuth())
@@ -105,8 +120,8 @@ func runAdminPanel(cfg *config.Config) {
 		proxy.Any("/v1beta/*path", handler.ProxyRequest(cfg))
 	}
 
-	log.Printf("🔐 Admin panel listening on :%s", cfg.AdminPort)
-	if err := r.Run(":" + cfg.AdminPort); err != nil {
-		log.Fatalf("Admin panel failed: %v", err)
+	log.Printf("🔑 Proxy listening on :%s", cfg.ProxyPort)
+	if err := r.Run(":" + cfg.ProxyPort); err != nil {
+		log.Fatalf("Proxy failed: %v", err)
 	}
 }

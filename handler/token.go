@@ -3,12 +3,12 @@ package handler
 import (
 	"auth-gateway/database"
 	"auth-gateway/models"
+	"crypto/rand"
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"golang.org/x/crypto/bcrypt"
 )
 
 type CreateTokenRequest struct {
@@ -85,17 +85,19 @@ func LookupToken(c *gin.Context) {
 	database.DB.Model(&models.UsageRecord{}).Where("token_id = ? AND success = ?", token.ID, true).Count(&successRequests)
 
 	c.JSON(http.StatusOK, gin.H{
-		"name":            token.Name,
-		"max_requests":    token.MaxRequests,
-		"used_requests":   token.UsedRequests,
-		"total_requests":  totalRequests,
-		"success_count":   successRequests,
-		"enabled":        token.Enabled,
-		"hourly_limit":    token.HourlyLimit,
-		"hourly_used":     token.HourlyUsed,
-		"weekly_limit":    token.WeeklyLimit,
+		"name":             token.Name,
+		"max_requests":     token.MaxRequests,
+		"used_requests":    token.UsedRequests,
+		"total_requests":   totalRequests,
+		"success_count":    successRequests,
+		"enabled":         token.Enabled,
+		"hourly_limit":     token.HourlyLimit,
+		"hourly_requests":  token.HourlyRequests,
+		"hourly_used":      token.HourlyUsed,
+		"weekly_limit":     token.WeeklyLimit,
+		"weekly_requests": token.WeeklyRequests,
 		"weekly_used":     token.WeeklyUsed,
-		"created_at":      token.CreatedAt,
+		"created_at":       token.CreatedAt,
 	})
 }
 
@@ -202,12 +204,16 @@ func ResetUsage(c *gin.Context) {
 }
 
 func generateTokenString() (string, error) {
-	tokenID := uuid.New().String()[:24]
-	hash, err := bcrypt.GenerateFromPassword([]byte(tokenID), bcrypt.DefaultCost)
-	if err != nil {
+	bytes := make([]byte, 24)
+	if _, err := rand.Read(bytes); err != nil {
 		return "", err
 	}
-	return "sk-" + string(hash)[:32], nil
+	// Only use alphanumeric characters (a-z, A-Z, 0-9)
+	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	for i, b := range bytes {
+		bytes[i] = charset[int(b)%len(charset)]
+	}
+	return "sk-" + string(bytes), nil
 }
 
 func getWeeklyResetTime() time.Time {

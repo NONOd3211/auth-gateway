@@ -23,6 +23,12 @@ export interface Token {
   enabled: boolean
   user_id: string
   description: string
+  hourly_limit: boolean
+  hourly_requests: number
+  hourly_used: number
+  weekly_limit: boolean
+  weekly_requests: number
+  weekly_used: number
 }
 
 export interface UsageStats {

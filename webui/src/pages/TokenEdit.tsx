@@ -1,73 +1,58 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 import { tokenApi } from '../api/client'
 
-export function TokenCreate() {
+export function TokenEdit() {
+  const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const [loading, setLoading] = useState(true)
   const [form, setForm] = useState({
     name: '',
     max_requests: 0,
     expires_at: '',
     user_id: '',
     description: '',
-    hourly_limit: false,
-    hourly_requests: 0,
-    weekly_limit: false,
-    weekly_requests: 0,
+    enabled: true,
   })
-  const [createdToken, setCreatedToken] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!id) return
+    tokenApi.get(id).then((res) => {
+      const token = res.data.token
+      setForm({
+        name: token.name || '',
+        max_requests: token.max_requests || 0,
+        expires_at: token.expires_at ? new Date(token.expires_at).toISOString().slice(0, 16) : '',
+        user_id: token.user_id || '',
+        description: token.description || '',
+        enabled: token.enabled ?? true,
+      })
+    }).finally(() => setLoading(false))
+  }, [id])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!id) return
     const data: any = {
       name: form.name,
       max_requests: Number(form.max_requests),
       user_id: form.user_id,
       description: form.description,
-      hourly_limit: form.hourly_limit,
-      weekly_limit: form.weekly_limit,
+      enabled: form.enabled,
     }
     if (form.expires_at) {
       data.expires_at = new Date(form.expires_at).toISOString()
     }
-    if (form.hourly_limit) {
-      data.hourly_requests = Number(form.hourly_requests)
-    }
-    if (form.weekly_limit) {
-      data.weekly_requests = Number(form.weekly_requests)
-    }
 
-    const res = await tokenApi.create(data)
-    setCreatedToken(res.data.token.token)
+    await tokenApi.update(id, data)
+    navigate('/tokens')
   }
 
-  if (createdToken) {
-    return (
-      <div style={styles.container}>
-        <h1 style={styles.successTitle}>✅ Token 创建成功</h1>
-        <div style={styles.successCard}>
-          <p>请复制保存以下 Token，关闭后将无法再次查看完整 Token：</p>
-          <code style={styles.tokenCode}>{createdToken}</code>
-          <button
-            onClick={() => {
-              navigator.clipboard.writeText(createdToken)
-              alert('已复制到剪贴板')
-            }}
-            style={styles.copyBtn}
-          >
-            复制 Token
-          </button>
-          <button onClick={() => navigate('/tokens')} style={styles.backBtn}>
-            返回列表
-          </button>
-        </div>
-      </div>
-    )
-  }
+  if (loading) return <div style={styles.loading}>加载中...</div>
 
   return (
     <div style={styles.container}>
-      <h1 style={styles.title}>➕ 新建 Token</h1>
+      <h1 style={styles.title}>✏️ 编辑 Token</h1>
       <form onSubmit={handleSubmit} style={styles.form}>
         <div style={styles.field}>
           <label style={styles.label}>名称 *</label>
@@ -129,46 +114,15 @@ export function TokenCreate() {
           <label style={styles.checkboxLabel}>
             <input
               type="checkbox"
-              checked={form.hourly_limit}
-              onChange={(e) => setForm({ ...form, hourly_limit: e.target.checked })}
+              checked={form.enabled}
+              onChange={(e) => setForm({ ...form, enabled: e.target.checked })}
             />
-            启用小时请求限制
+            启用 Token
           </label>
-          {form.hourly_limit && (
-            <input
-              type="number"
-              value={form.hourly_requests}
-              onChange={(e) => setForm({ ...form, hourly_requests: Number(e.target.value) })}
-              placeholder="小时请求次数"
-              style={styles.input}
-            />
-          )}
-          <small style={styles.hint}>启用后，每小时请求次数达到限制后无法使用</small>
-        </div>
-
-        <div style={styles.field}>
-          <label style={styles.checkboxLabel}>
-            <input
-              type="checkbox"
-              checked={form.weekly_limit}
-              onChange={(e) => setForm({ ...form, weekly_limit: e.target.checked })}
-            />
-            启用周请求限制
-          </label>
-          {form.weekly_limit && (
-            <input
-              type="number"
-              value={form.weekly_requests}
-              onChange={(e) => setForm({ ...form, weekly_requests: Number(e.target.value) })}
-              placeholder="每周请求次数"
-              style={styles.input}
-            />
-          )}
-          <small style={styles.hint}>启用后，每周请求次数达到限制后无法使用</small>
         </div>
 
         <div style={styles.buttons}>
-          <button type="submit" style={styles.submitBtn}>创建 Token</button>
+          <button type="submit" style={styles.submitBtn}>保存</button>
           <button type="button" onClick={() => navigate('/tokens')} style={styles.cancelBtn}>取消</button>
         </div>
       </form>
@@ -177,15 +131,16 @@ export function TokenCreate() {
 }
 
 const styles: Record<string, React.CSSProperties> = {
+  loading: {
+    textAlign: 'center',
+    padding: '2rem',
+    color: '#666',
+  },
   container: {
     maxWidth: '600px',
   },
   title: {
     marginBottom: '1.5rem',
-    color: '#333',
-  },
-  successTitle: {
-    marginBottom: '1rem',
     color: '#333',
   },
   form: {
@@ -246,40 +201,6 @@ const styles: Record<string, React.CSSProperties> = {
     background: '#e0e0e0',
     color: '#333',
     fontSize: '1rem',
-    cursor: 'pointer',
-  },
-  successCard: {
-    background: '#fff',
-    padding: '1.5rem',
-    borderRadius: '8px',
-    textAlign: 'center',
-    border: '1px solid #ddd',
-  },
-  tokenCode: {
-    display: 'block',
-    background: '#f5f5f5',
-    padding: '1rem',
-    borderRadius: '4px',
-    margin: '1rem 0',
-    wordBreak: 'break-all',
-    fontSize: '1rem',
-    border: '1px solid #ddd',
-  },
-  copyBtn: {
-    background: '#2196F3',
-    color: '#fff',
-    border: 'none',
-    padding: '0.75rem 1.5rem',
-    borderRadius: '4px',
-    cursor: 'pointer',
-    marginRight: '0.5rem',
-  },
-  backBtn: {
-    background: '#e0e0e0',
-    color: '#333',
-    border: 'none',
-    padding: '0.75rem 1.5rem',
-    borderRadius: '4px',
     cursor: 'pointer',
   },
 }
