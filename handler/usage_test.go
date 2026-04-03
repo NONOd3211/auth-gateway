@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -15,9 +16,17 @@ func TestInvalidDateFormatReturnsError(t *testing.T) {
 	// Mock the handler with date validation
 	router.GET("/usage", func(c *gin.Context) {
 		startDate := c.Query("start_date")
+		endDate := c.Query("end_date")
+
 		if startDate != "" {
-			if _, err := parseDate(startDate); err != nil {
+			if _, err := time.Parse("2006-01-02", startDate); err != nil {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid start_date format, expected YYYY-MM-DD"})
+				return
+			}
+		}
+		if endDate != "" {
+			if _, err := time.Parse("2006-01-02", endDate); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid end_date format, expected YYYY-MM-DD"})
 				return
 			}
 		}
@@ -31,7 +40,8 @@ func TestInvalidDateFormatReturnsError(t *testing.T) {
 	}{
 		{"invalid start_date", "/usage?start_date=invalid", http.StatusBadRequest},
 		{"invalid end_date", "/usage?end_date=2024-13-01", http.StatusBadRequest},
-		{"valid date", "/usage?start_date=2024-01-01", http.StatusOK},
+		{"valid start_date", "/usage?start_date=2024-01-01", http.StatusOK},
+		{"valid end_date", "/usage?end_date=2024-12-31", http.StatusOK},
 	}
 
 	for _, tt := range tests {
@@ -45,24 +55,4 @@ func TestInvalidDateFormatReturnsError(t *testing.T) {
 			}
 		})
 	}
-}
-
-func parseDate(dateStr string) (interface{}, error) {
-	// Simple validation - actual implementation uses time.Parse
-	if dateStr == "" || dateStr == "invalid" {
-		return nil, &parseError{dateStr}
-	}
-	// For test purposes, only "2024-01-01" is considered valid
-	if dateStr == "2024-01-01" {
-		return nil, nil
-	}
-	return nil, &parseError{dateStr}
-}
-
-type parseError struct {
-	date string
-}
-
-func (e *parseError) Error() string {
-	return "invalid date format"
 }
