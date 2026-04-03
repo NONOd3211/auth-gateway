@@ -25,11 +25,32 @@ export function TokenList() {
   }
 
   const handleCopy = (token: string) => {
-    navigator.clipboard.writeText(token).then(() => {
+    // Try clipboard API first
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(token).then(() => {
+        alert('已复制到剪贴板')
+      }).catch(() => {
+        fallbackCopy(token)
+      })
+    } else {
+      fallbackCopy(token)
+    }
+  }
+
+  const fallbackCopy = (token: string) => {
+    const textarea = document.createElement('textarea')
+    textarea.value = token
+    textarea.style.position = 'fixed'
+    textarea.style.opacity = '0'
+    document.body.appendChild(textarea)
+    textarea.select()
+    try {
+      document.execCommand('copy')
       alert('已复制到剪贴板')
-    }).catch(() => {
-      alert('复制失败，请手动复制')
-    })
+    } catch {
+      alert('复制失败，请手动选择复制')
+    }
+    document.body.removeChild(textarea)
   }
 
   if (loading) return <div style={styles.loading}>加载中...</div>

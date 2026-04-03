@@ -17,6 +17,22 @@ export function TokenCreate() {
   })
   const [createdToken, setCreatedToken] = useState<string | null>(null)
 
+  const fallbackCopyText = (text: string) => {
+    const textarea = document.createElement('textarea')
+    textarea.value = text
+    textarea.style.position = 'fixed'
+    textarea.style.opacity = '0'
+    document.body.appendChild(textarea)
+    textarea.select()
+    try {
+      document.execCommand('copy')
+      alert('已复制到剪贴板')
+    } catch {
+      alert('复制失败，请手动选择复制')
+    }
+    document.body.removeChild(textarea)
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     const data: any = {
@@ -50,11 +66,15 @@ export function TokenCreate() {
           <code style={styles.tokenCode}>{createdToken}</code>
           <button
             onClick={() => {
-              navigator.clipboard.writeText(createdToken).then(() => {
-                alert('已复制到剪贴板')
-              }).catch(() => {
-                alert('复制失败，请手动复制')
-              })
+              if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(createdToken).then(() => {
+                  alert('已复制到剪贴板')
+                }).catch(() => {
+                  fallbackCopyText(createdToken)
+                })
+              } else {
+                fallbackCopyText(createdToken)
+              }
             }}
             style={styles.copyBtn}
           >
