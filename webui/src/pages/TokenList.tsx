@@ -25,8 +25,11 @@ export function TokenList() {
   }
 
   const handleCopy = (token: string) => {
-    navigator.clipboard.writeText(token)
-    alert('已复制到剪贴板')
+    navigator.clipboard.writeText(token).then(() => {
+      alert('已复制到剪贴板')
+    }).catch(() => {
+      alert('复制失败，请手动复制')
+    })
   }
 
   if (loading) return <div style={styles.loading}>加载中...</div>

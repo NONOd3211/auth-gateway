@@ -50,8 +50,11 @@ export function TokenCreate() {
           <code style={styles.tokenCode}>{createdToken}</code>
           <button
             onClick={() => {
-              navigator.clipboard.writeText(createdToken)
-              alert('已复制到剪贴板')
+              navigator.clipboard.writeText(createdToken).then(() => {
+                alert('已复制到剪贴板')
+              }).catch(() => {
+                alert('复制失败，请手动复制')
+              })
             }}
             style={styles.copyBtn}
           >
