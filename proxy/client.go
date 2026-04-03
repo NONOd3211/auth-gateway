@@ -51,8 +51,12 @@ func (c *Client) Forward(req *http.Request) (*http.Response, error) {
 		if key == "Host" {
 			continue
 		}
-		for _, value := range values {
-			proxyReq.Header.Add(key, value)
+		// Use Set to replace existing headers instead of Add (which appends)
+		if len(values) > 0 {
+			proxyReq.Header.Set(key, values[0])
+			for _, value := range values[1:] {
+				proxyReq.Header.Add(key, value)
+			}
 		}
 	}
 
