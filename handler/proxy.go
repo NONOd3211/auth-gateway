@@ -5,11 +5,12 @@ import (
 	"auth-gateway/database"
 	"auth-gateway/models"
 	"auth-gateway/providers"
-	"auth-gateway/providers/minimax"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -24,9 +25,6 @@ func SetProviderManager(pm *providers.ProviderManager) {
 }
 
 func ProxyRequest(cfg *config.Config) gin.HandlerFunc {
-	// Create executor using config (baseURL and timeout)
-	executor := minimax.NewExecutor(cfg)
-
 	return func(c *gin.Context) {
 		tokenIDValue, exists := c.Get("token_id")
 		if !exists {
@@ -64,25 +62,45 @@ func ProxyRequest(cfg *config.Config) gin.HandlerFunc {
 		token.CheckAndUpdateLimits()
 		database.DB.Save(&token)
 
+		// Read request body to determine model
+		bodyBytes, err := io.ReadAll(c.Request.Body)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "failed to read request body"})
+			return
+		}
+
+		// Extract model name from request body
+		model := extractModel(string(bodyBytes))
+
+		// Get the appropriate provider based on model
+		provider := providerManager.GetProviderForModel(model)
+		if provider == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "no provider available for model: " + model})
+			return
+		}
+
+		// Restore body for the provider to read
+		c.Request.Body = io.NopCloser(strings.NewReader(string(bodyBytes)))
+
 		// Get API key for this token from ProviderManager
 		apiKey, err := providerManager.GetAPIKeyForToken(tokenID)
 		if err != nil {
-			recordUsage(tokenID, c.Request.URL.Path, "", 0, 0, false, "failed to get API key: "+err.Error())
+			recordUsage(tokenID, c.Request.URL.Path, model, 0, 0, false, "failed to get API key: "+err.Error())
 			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "no available API keys"})
 			return
 		}
 
-		// Forward request using executor
-		resp, err := executor.Execute(c.Request, apiKey.Key)
+		// Forward request using the selected provider
+		resp, err := provider.Execute(c.Request, apiKey.Key)
 		if err != nil {
-			recordUsage(tokenID, c.Request.URL.Path, "", 0, 0, false, err.Error())
+			recordUsage(tokenID, c.Request.URL.Path, model, 0, 0, false, err.Error())
 			c.JSON(http.StatusBadGateway, gin.H{"error": "upstream error: " + err.Error()})
 			return
 		}
 		defer resp.Body.Close()
 
 		// Check for quota errors and mark key as failed if needed
-		if executor.IsQuotaError(resp) {
+		if provider.IsQuotaError(resp) {
 			providerManager.MarkKeyFailed(apiKey.ID)
 		}
 
@@ -94,7 +112,7 @@ func ProxyRequest(cfg *config.Config) gin.HandlerFunc {
 
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
-			recordUsage(tokenID, c.Request.URL.Path, "", 0, 0, false, "failed to read response body: "+err.Error())
+			recordUsage(tokenID, c.Request.URL.Path, model, 0, 0, false, "failed to read response body: "+err.Error())
 			c.JSON(http.StatusBadGateway, gin.H{"error": "failed to read response body"})
 			return
 		}
@@ -111,8 +129,20 @@ func ProxyRequest(cfg *config.Config) gin.HandlerFunc {
 			database.DB.Exec("UPDATE tokens SET weekly_used = weekly_used + 1 WHERE id = ?", tokenID)
 		}
 
-		recordUsage(tokenID, c.Request.URL.Path, "", 0, 0, true, "")
+		recordUsage(tokenID, c.Request.URL.Path, model, 0, 0, true, "")
 	}
+}
+
+// extractModel extracts the model name from the request body
+func extractModel(body string) string {
+	// Try to parse as JSON and extract model field
+	var req struct {
+		Model string `json:"model"`
+	}
+	if err := json.Unmarshal([]byte(body), &req); err == nil && req.Model != "" {
+		return req.Model
+	}
+	return ""
 }
 
 func recordUsage(tokenID, path, model string, inputTokens, outputTokens int, success bool, errMsg string) {

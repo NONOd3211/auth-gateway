@@ -7,6 +7,7 @@ import (
 	"auth-gateway/middleware"
 	"auth-gateway/models"
 	"auth-gateway/providers"
+	"auth-gateway/providers/anthropic"
 	"auth-gateway/providers/minimax"
 	"fmt"
 	"log"
@@ -53,6 +54,7 @@ func main() {
 func initProviderManager(cfg *config.Config) {
 	providerManager = providers.NewProviderManager()
 	providerManager.RegisterProvider(minimax.NewExecutor(cfg))
+	providerManager.RegisterProvider(anthropic.NewExecutor())
 
 	// Load API keys from MINIMAX_API_KEYS env var
 	if cfg.MiniMaxAPIKeys != "" {

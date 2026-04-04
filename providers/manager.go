@@ -154,4 +154,19 @@ func (m *ProviderManager) GetProvider(name string) Provider {
 	return m.providers[name]
 }
 
+// GetProviderForModel selects the appropriate provider based on model name
+// claude-* models go to anthropic, others go to minimax
+func (m *ProviderManager) GetProviderForModel(model string) Provider {
+	if len(model) >= 6 && model[:6] == "claude" {
+		if p, ok := m.providers["anthropic"]; ok {
+			return p
+		}
+	}
+	// Default to minimax
+	if p, ok := m.providers["minimax"]; ok {
+		return p
+	}
+	return nil
+}
+
 var ErrNoAPIKeysAvailable = fmt.Errorf("no available API keys")
