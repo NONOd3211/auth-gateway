@@ -45,6 +45,11 @@ func (m *ProviderManager) LoadAPIKeys() error {
 	return nil
 }
 
+// ReloadAPIKeys reloads API keys from database into memory cache
+func (m *ProviderManager) ReloadAPIKeys() error {
+	return m.LoadAPIKeys()
+}
+
 func (m *ProviderManager) GetAPIKeyForToken(tokenID string) (*models.APIKey, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()

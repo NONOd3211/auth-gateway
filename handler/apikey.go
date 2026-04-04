@@ -42,6 +42,11 @@ func CreateAPIKey(c *gin.Context) {
 		return
 	}
 
+	// Reload keys into provider manager
+	if providerManager != nil {
+		providerManager.ReloadAPIKeys()
+	}
+
 	c.JSON(http.StatusCreated, gin.H{"key": key})
 }
 
@@ -74,6 +79,11 @@ func UpdateAPIKey(c *gin.Context) {
 		return
 	}
 
+	// Reload keys into provider manager
+	if providerManager != nil {
+		providerManager.ReloadAPIKeys()
+	}
+
 	c.JSON(http.StatusOK, gin.H{"key": key})
 }
 
@@ -83,6 +93,12 @@ func DeleteAPIKey(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+
+	// Reload keys into provider manager
+	if providerManager != nil {
+		providerManager.ReloadAPIKeys()
+	}
+
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
@@ -101,6 +117,11 @@ func EnableAPIKey(c *gin.Context) {
 		return
 	}
 
+	// Reload keys into provider manager
+	if providerManager != nil {
+		providerManager.ReloadAPIKeys()
+	}
+
 	c.JSON(http.StatusOK, gin.H{"key": key})
 }
 
@@ -116,6 +137,11 @@ func DisableAPIKey(c *gin.Context) {
 	if err := database.DB.Save(&key).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
+	}
+
+	// Reload keys into provider manager
+	if providerManager != nil {
+		providerManager.ReloadAPIKeys()
 	}
 
 	c.JSON(http.StatusOK, gin.H{"key": key})
