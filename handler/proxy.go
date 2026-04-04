@@ -150,51 +150,16 @@ func ProxyRequest(cfg *config.Config) gin.HandlerFunc {
 		log.Printf("[DEBUG] token=%s path=%s upstream_content_type=%s is_stream_request=%v is_streaming=%v",
 			tokenID, c.Request.URL.Path, contentType, isStreamRequest, isStreaming)
 
-		// Copy response headers
+		if isStreaming {
+			handleStreamingResponse(c, resp, tokenID, model, token)
+			return
+		}
+
+		// Copy response headers for non-streaming
 		for key, values := range resp.Header {
 			for _, value := range values {
 				c.Header(key, value)
 			}
-		}
-
-		if isStreaming {
-			c.Header("Content-Type", "text/event-stream")
-			c.Header("Cache-Control", "no-cache")
-			c.Header("Connection", "keep-alive")
-			c.Status(resp.StatusCode)
-
-			flusher, ok := c.Writer.(http.Flusher)
-			if !ok {
-				log.Printf("[DEBUG] token=%s path=%s streaming not supported", tokenID, c.Request.URL.Path)
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "streaming not supported"})
-				return
-			}
-
-			reader := bufio.NewReader(resp.Body)
-			for {
-				line, err := reader.ReadString('\n')
-				if err != nil {
-					if err != io.EOF {
-						log.Printf("[DEBUG] token=%s path=%s streaming read error: %v", tokenID, c.Request.URL.Path, err)
-					}
-					break
-				}
-				c.Writer.WriteString(line)
-				c.Writer.Flush()
-				flusher.Flush()
-			}
-
-			log.Printf("[DEBUG] token=%s path=%s model=%s resp_status=%d streaming completed",
-				tokenID, c.Request.URL.Path, model, resp.StatusCode)
-			recordUsage(tokenID, c.Request.URL.Path, model, 0, 0, 0, true, "streaming")
-			database.DB.Exec("UPDATE tokens SET used_requests = used_requests + 1 WHERE id = ?", tokenID)
-			if token.HourlyLimit {
-				database.DB.Exec("UPDATE tokens SET hourly_used = hourly_used + 1 WHERE id = ?", tokenID)
-			}
-			if token.WeeklyLimit {
-				database.DB.Exec("UPDATE tokens SET weekly_used = weekly_used + 1 WHERE id = ?", tokenID)
-			}
-			return
 		}
 
 		body, err := io.ReadAll(resp.Body)
@@ -270,6 +235,112 @@ func isStreamEnabled(body string) bool {
 		return req.Stream
 	}
 	return false
+}
+
+// min returns the minimum of two integers
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+// handleStreamingResponse handles SSE streaming response
+func handleStreamingResponse(c *gin.Context, resp *http.Response, tokenID, model string, token models.Token) {
+	// Set SSE headers
+	c.Header("Content-Type", "text/event-stream")
+	c.Header("Cache-Control", "no-cache")
+	c.Header("Connection", "keep-alive")
+	c.Status(resp.StatusCode)
+
+	flusher, ok := c.Writer.(http.Flusher)
+	if !ok {
+		log.Printf("[ERROR] token=%s streaming not supported by response writer", tokenID)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "streaming not supported"})
+		return
+	}
+
+	reader := bufio.NewReader(resp.Body)
+	lineCount := 0
+	sawDone := false
+	buffer := make([]string, 0)
+
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			if err != io.EOF {
+				log.Printf("[ERROR] token=%s streaming read error: %v", tokenID, err)
+			}
+			break
+		}
+
+		lineCount++
+		trimmed := strings.TrimSpace(line)
+
+		// Skip empty lines but keep them for SSE format
+		if trimmed == "" {
+			// Flush buffer when we hit an empty line (end of event)
+			if len(buffer) > 0 {
+				for _, bufLine := range buffer {
+					c.Writer.WriteString(bufLine)
+				}
+				c.Writer.WriteString("\n")
+				c.Writer.Flush()
+				flusher.Flush()
+				buffer = buffer[:0]
+			}
+			continue
+		}
+
+		// Check for [DONE] marker
+		if trimmed == "data: [DONE]" {
+			sawDone = true
+		}
+
+		// Buffer the line
+		buffer = append(buffer, line)
+
+		// Log data lines
+		if strings.HasPrefix(trimmed, "data: ") && len(trimmed) > 6 {
+			preview := trimmed[6:]
+			if len(preview) > 80 {
+				preview = preview[:80] + "..."
+			}
+			log.Printf("[DEBUG] token=%s stream line %d: %s", tokenID, lineCount, preview)
+		}
+	}
+
+	// Flush any remaining buffer
+	if len(buffer) > 0 {
+		for _, bufLine := range buffer {
+			c.Writer.WriteString(bufLine)
+		}
+		c.Writer.Flush()
+		flusher.Flush()
+	}
+
+	// Add [DONE] marker if not present
+	if !sawDone {
+		log.Printf("[DEBUG] token=%s adding [DONE] marker", tokenID)
+		c.Writer.WriteString("data: [DONE]\n\n")
+		c.Writer.Flush()
+		flusher.Flush()
+	}
+
+	log.Printf("[DEBUG] token=%s model=%s stream completed lines=%d sawDone=%v",
+		tokenID, model, lineCount, sawDone)
+
+	// Record usage
+	recordUsage(tokenID, c.Request.URL.Path, model, 0, 0, 0, true, "streaming")
+
+	// Update token counters
+	database.DB.Exec("UPDATE tokens SET used_requests = used_requests + 1 WHERE id = ?", tokenID)
+	if token.HourlyLimit {
+		database.DB.Exec("UPDATE tokens SET hourly_used = hourly_used + 1 WHERE id = ?", tokenID)
+	}
+	if token.WeeklyLimit {
+		database.DB.Exec("UPDATE tokens SET weekly_used = weekly_used + 1 WHERE id = ?", tokenID)
+	}
 }
 
 // parseTokenUsage parses token usage from response body
