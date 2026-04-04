@@ -20,6 +20,7 @@ type CreateTokenRequest struct {
 	HourlyLimit    bool       `json:"hourly_limit"`
 	WeeklyLimit    bool       `json:"weekly_limit"`
 	WeeklyRequests int        `json:"weekly_requests"`
+	APIKeyID      string     `json:"api_key_id"` // 绑定到指定 API Key，为空则使用共享池
 }
 
 type UpdateTokenRequest struct {
@@ -28,6 +29,7 @@ type UpdateTokenRequest struct {
 	MaxRequests  int        `json:"max_requests"`
 	Enabled      *bool      `json:"enabled"`
 	Description  string     `json:"description"`
+	APIKeyID     string     `json:"api_key_id"` // 修改绑定的 API Key
 }
 
 func ListTokens(c *gin.Context) {
@@ -132,6 +134,7 @@ func CreateToken(c *gin.Context) {
 		WeeklyUsed:      0,
 		WeeklyResetAt:   getWeeklyResetTime(),
 		Enabled:         true,
+		APIKeyID:        req.APIKeyID,
 	}
 
 	if err := database.DB.Create(&token).Error; err != nil {
@@ -174,6 +177,9 @@ func UpdateToken(c *gin.Context) {
 	}
 	if req.Description != "" {
 		updates["description"] = req.Description
+	}
+	if req.APIKeyID != "" {
+		updates["api_key_id"] = req.APIKeyID
 	}
 
 	if err := database.DB.Model(&token).Updates(updates).Error; err != nil {

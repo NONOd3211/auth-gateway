@@ -50,10 +50,22 @@ func (m *ProviderManager) ReloadAPIKeys() error {
 	return m.LoadAPIKeys()
 }
 
-func (m *ProviderManager) GetAPIKeyForToken(tokenID string) (*models.APIKey, error) {
+func (m *ProviderManager) GetAPIKeyForToken(tokenID string, apiKeyID string) (*models.APIKey, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
+	// If token is bound to a specific API key, use that
+	if apiKeyID != "" {
+		for _, k := range m.keys {
+			if k.ID == apiKeyID && k.Enabled && k.Healthy {
+				return k, nil
+			}
+		}
+		// Bound key not found or not healthy
+		return nil, ErrNoAPIKeysAvailable
+	}
+
+	// No binding - use hash-based assignment (legacy behavior)
 	// Find existing mapping
 	var mapping models.TokenKeyMapping
 	if err := database.DB.Where("token_id = ?", tokenID).First(&mapping).Error; err == nil {

@@ -83,7 +83,7 @@ func ProxyRequest(cfg *config.Config) gin.HandlerFunc {
 		c.Request.Body = io.NopCloser(strings.NewReader(string(bodyBytes)))
 
 		// Get API key for this token from ProviderManager
-		apiKey, err := providerManager.GetAPIKeyForToken(tokenID)
+		apiKey, err := providerManager.GetAPIKeyForToken(tokenID, token.APIKeyID)
 		if err != nil {
 			recordUsage(tokenID, c.Request.URL.Path, model, 0, 0, 0, false, "failed to get API key: "+err.Error())
 			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "no available API keys"})

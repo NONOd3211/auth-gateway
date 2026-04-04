@@ -25,6 +25,7 @@ type Token struct {
 	Enabled         bool           `json:"enabled" gorm:"default:true"`
 	UserID          string         `json:"user_id" gorm:"size:50"`
 	Description     string         `json:"description" gorm:"size:255"`
+	APIKeyID        string         `json:"api_key_id" gorm:"size:36"` // 绑定的 API Key ID，为空则使用共享池
 	DeletedAt       gorm.DeletedAt `json:"-" gorm:"index"`
 }
 
