@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 )
 
-// ConvertOpenAIToAnthropicResponse converts OpenAI response to Anthropic format
 func ConvertOpenAIToAnthropicResponse(body []byte, model string) ([]byte, error) {
 	var openaiResp map[string]interface{}
 	if err := json.Unmarshal(body, &openaiResp); err != nil {
@@ -71,32 +70,4 @@ func convertOpenAIResponseToAnthropic(openaiResp map[string]interface{}, model s
 		"stop_sequence": nil,
 		"usage":         usage,
 	}
-}
-
-// IsAnthropicFormatRequest checks if the request body is in Anthropic format
-func IsAnthropicFormatRequest(body []byte) bool {
-	var req map[string]interface{}
-	if err := json.Unmarshal(body, &req); err != nil {
-		return false
-	}
-
-	// Check if messages array has Anthropic-style content blocks
-	if messages, hasMessages := req["messages"].([]interface{}); hasMessages && len(messages) > 0 {
-		if firstMsg, ok := messages[0].(map[string]interface{}); ok {
-			if content, hasContent := firstMsg["content"]; hasContent {
-				if contentArr, ok := content.([]interface{}); ok && len(contentArr) > 0 {
-					return isAnthropicFormat(contentArr)
-				}
-			}
-		}
-	}
-
-	// Check top-level content field
-	if content, hasContent := req["content"]; hasContent {
-		if contentArr, ok := content.([]interface{}); ok && len(contentArr) > 0 {
-			return isAnthropicFormat(contentArr)
-		}
-	}
-
-	return false
 }
