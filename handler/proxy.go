@@ -81,6 +81,13 @@ func ProxyRequest(cfg *config.Config) gin.HandlerFunc {
 		model := extractModel(string(bodyBytes))
 		isStreamRequest := isStreamEnabled(string(bodyBytes))
 
+		bodyPreview := string(bodyBytes)
+		if len(bodyPreview) > 200 {
+			bodyPreview = bodyPreview[:200]
+		}
+		log.Printf("[DEBUG] token=%s path=%s model=%s stream=%v request_body_preview=%s",
+			tokenID, c.Request.URL.Path, model, isStreamRequest, bodyPreview)
+
 		// Get the appropriate provider based on model
 		provider := providerManager.GetProviderForModel(model)
 		if provider == nil {
@@ -139,6 +146,9 @@ func ProxyRequest(cfg *config.Config) gin.HandlerFunc {
 			strings.Contains(contentType, "application/x-ndjson") ||
 			isStreamRequest
 
+		log.Printf("[DEBUG] token=%s path=%s upstream_content_type=%s is_stream_request=%v is_streaming=%v",
+			tokenID, c.Request.URL.Path, contentType, isStreamRequest, isStreaming)
+
 		// Copy response headers
 		for key, values := range resp.Header {
 			for _, value := range values {
@@ -147,7 +157,10 @@ func ProxyRequest(cfg *config.Config) gin.HandlerFunc {
 		}
 
 		if isStreaming {
-			// For streaming responses, use streaming writer
+			c.Header("Content-Type", "text/event-stream")
+			c.Header("Cache-Control", "no-cache")
+			c.Header("Connection", "keep-alive")
+			c.Header("Transfer-Encoding", "chunked")
 			c.Status(resp.StatusCode)
 			c.Stream(func(w io.Writer) bool {
 				_, err := io.Copy(w, resp.Body)
