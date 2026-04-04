@@ -21,7 +21,7 @@ func NewExecutor(cfg *config.Config) *Executor {
 
 func getMiniMaxBaseURL(cfg *config.Config) string {
 	// MiniMax API base URL
-	return "https://api.minimax.chat/v1"
+	return "https://api.minimax.com/v1"
 }
 
 func (e *Executor) Name() string {
