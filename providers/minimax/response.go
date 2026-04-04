@@ -99,19 +99,28 @@ func convertOpenAIResponseToAnthropic(openaiResp map[string]interface{}, model s
 		return openaiResp
 	}
 
-	choice := choices[0].(map[string]interface{})
+	choice, ok := choices[0].(map[string]interface{})
+	if !ok {
+		return openaiResp
+	}
+
 	message, ok := choice["message"].(map[string]interface{})
 	if !ok {
 		return openaiResp
 	}
 
-	content := message["content"].(string)
-	role := message["role"].(string)
-	if role == "assistant" {
-		role = "assistant"
+	var contentStr string
+	if content, ok := message["content"]; ok {
+		if str, ok := content.(string); ok {
+			contentStr = str
+		}
 	}
 
-	// Extract usage
+	role := "assistant"
+	if r, ok := message["role"].(string); ok {
+		role = r
+	}
+
 	usage := map[string]interface{}{
 		"input_tokens":  0,
 		"output_tokens": 0,
@@ -125,15 +134,20 @@ func convertOpenAIResponseToAnthropic(openaiResp map[string]interface{}, model s
 		}
 	}
 
+	var stopReason interface{} = "end_turn"
+	if fr, ok := choice["finish_reason"].(string); ok && fr != "" {
+		stopReason = fr
+	}
+
 	return map[string]interface{}{
-		"id":           openaiResp["id"],
-		"type":         "message",
-		"role":         role,
-		"model":        model,
-		"content":      []map[string]interface{}{{"type": "text", "text": content}},
-		"stop_reason":  choice["finish_reason"],
+		"id":            openaiResp["id"],
+		"type":          "message",
+		"role":          role,
+		"model":         model,
+		"content":       []map[string]interface{}{{"type": "text", "text": contentStr}},
+		"stop_reason":   stopReason,
 		"stop_sequence": nil,
-		"usage":        usage,
+		"usage":         usage,
 	}
 }
 

@@ -406,11 +406,10 @@ func handleAnthropicStreamingResponse(c *gin.Context, resp *http.Response, token
 		},
 	}
 	startJSON, _ := json.Marshal(startEvent)
-	c.Writer.WriteString(fmt.Sprintf("data: %s\n\n", startJSON))
+	c.Writer.WriteString(fmt.Sprintf("event: message_start\ndata: %s\n\n", startJSON))
 	c.Writer.Flush()
 	flusher.Flush()
 
-	// Send content_block_start event
 	blockStart := map[string]interface{}{
 		"type":  "content_block_start",
 		"index": 0,
@@ -420,7 +419,7 @@ func handleAnthropicStreamingResponse(c *gin.Context, resp *http.Response, token
 		},
 	}
 	blockStartJSON, _ := json.Marshal(blockStart)
-	c.Writer.WriteString(fmt.Sprintf("data: %s\n\n", blockStartJSON))
+	c.Writer.WriteString(fmt.Sprintf("event: content_block_start\ndata: %s\n\n", blockStartJSON))
 	c.Writer.Flush()
 	flusher.Flush()
 
@@ -486,7 +485,7 @@ func handleAnthropicStreamingResponse(c *gin.Context, resp *http.Response, token
 		anthropicChunk := convertOpenAIChunkToAnthropicChunk(openaiChunk)
 		if anthropicChunk != nil {
 			chunkJSON, _ := json.Marshal(anthropicChunk)
-			c.Writer.WriteString(fmt.Sprintf("data: %s\n\n", chunkJSON))
+			c.Writer.WriteString(fmt.Sprintf("event: content_block_delta\ndata: %s\n\n", chunkJSON))
 			c.Writer.Flush()
 			flusher.Flush()
 			totalOutputTokens++
@@ -506,17 +505,15 @@ func handleAnthropicStreamingResponse(c *gin.Context, resp *http.Response, token
 		log.Printf("[DEBUG] token=%s total content: %s", tokenID, lastContentStr)
 	}
 
-	// Send content_block_stop event
 	blockStop := map[string]interface{}{
 		"type":  "content_block_stop",
 		"index": 0,
 	}
 	blockStopJSON, _ := json.Marshal(blockStop)
-	c.Writer.WriteString(fmt.Sprintf("data: %s\n\n", blockStopJSON))
+	c.Writer.WriteString(fmt.Sprintf("event: content_block_stop\ndata: %s\n\n", blockStopJSON))
 	c.Writer.Flush()
 	flusher.Flush()
 
-	// Send message_delta event
 	messageDelta := map[string]interface{}{
 		"type": "message_delta",
 		"delta": map[string]interface{}{
@@ -527,16 +524,15 @@ func handleAnthropicStreamingResponse(c *gin.Context, resp *http.Response, token
 		},
 	}
 	messageDeltaJSON, _ := json.Marshal(messageDelta)
-	c.Writer.WriteString(fmt.Sprintf("data: %s\n\n", messageDeltaJSON))
+	c.Writer.WriteString(fmt.Sprintf("event: message_delta\ndata: %s\n\n", messageDeltaJSON))
 	c.Writer.Flush()
 	flusher.Flush()
 
-	// Send message_stop event
 	stopEvent := map[string]interface{}{
 		"type": "message_stop",
 	}
 	stopJSON, _ := json.Marshal(stopEvent)
-	c.Writer.WriteString(fmt.Sprintf("data: %s\n\n", stopJSON))
+	c.Writer.WriteString(fmt.Sprintf("event: message_stop\ndata: %s\n\n", stopJSON))
 	c.Writer.Flush()
 	flusher.Flush()
 
