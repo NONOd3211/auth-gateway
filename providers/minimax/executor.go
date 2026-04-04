@@ -2,6 +2,7 @@ package minimax
 
 import (
 	"auth-gateway/config"
+	"bytes"
 	"io"
 	"log"
 	"net/http"
@@ -54,11 +55,17 @@ func (e *Executor) Execute(req *http.Request, apiKey string) (*http.Response, er
 }
 
 func (e *Executor) IsQuotaError(resp *http.Response) bool {
-	return IsQuotaError(resp)
+	// MiniMax quota errors typically return 429 status code
+	if resp.StatusCode == 429 {
+		return true
+	}
+	return false
 }
 
 func (e *Executor) GetQuotaInfo(resp *http.Response) (used, limit int64, err error) {
-	return GetQuotaInfo(resp)
+	// MiniMax doesn't provide quota info in response headers
+	// Return 0, 0 to indicate no info available
+	return 0, 0, nil
 }
 
 // PassThroughResponse reads response body and returns it
