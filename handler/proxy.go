@@ -146,8 +146,8 @@ func ProxyRequest(cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 
-		// Decompress gzip response if needed
-		if resp.Header.Get("Content-Encoding") == "gzip" {
+		// Decompress gzip response if needed (check magic bytes, not header)
+		if len(body) >= 2 && body[0] == 0x1f && body[1] == 0x8b {
 			body, err = decompressGzip(body)
 			if err != nil {
 				log.Printf("[DEBUG] token=%s path=%s gzip decompress error: %v", tokenID, c.Request.URL.Path, err)
