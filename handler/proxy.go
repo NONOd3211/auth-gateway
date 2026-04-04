@@ -118,17 +118,6 @@ func ProxyRequest(cfg *config.Config) gin.HandlerFunc {
 		}
 		c.Data(resp.StatusCode, resp.Header.Get("Content-Type"), body)
 
-		// Update usage count synchronously to avoid race conditions
-		database.DB.Exec("UPDATE tokens SET used_requests = used_requests + 1 WHERE id = ?", tokenID)
-
-		// Update hourly and weekly counters
-		if token.HourlyLimit {
-			database.DB.Exec("UPDATE tokens SET hourly_used = hourly_used + 1 WHERE id = ?", tokenID)
-		}
-		if token.WeeklyLimit {
-			database.DB.Exec("UPDATE tokens SET weekly_used = weekly_used + 1 WHERE id = ?", tokenID)
-		}
-
 		// Parse token usage from response
 		inputTokens, outputTokens, cacheTokens := parseTokenUsage(body, resp.Header.Get("Content-Type"))
 
