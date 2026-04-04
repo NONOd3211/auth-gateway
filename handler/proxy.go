@@ -230,7 +230,7 @@ func handleOpenAIStream(c *gin.Context, resp *http.Response, tokenID, model stri
 		return
 	}
 
-	var reader *bufio.Reader
+	var reader io.Reader
 	if resp.Header.Get("Content-Encoding") == "gzip" {
 		gzipReader, err := gzip.NewReader(resp.Body)
 		if err != nil {
@@ -238,28 +238,19 @@ func handleOpenAIStream(c *gin.Context, resp *http.Response, tokenID, model stri
 			return
 		}
 		defer gzipReader.Close()
-		reader = bufio.NewReader(gzipReader)
+		reader = gzipReader
 	} else {
-		reader = bufio.NewReader(resp.Body)
+		reader = resp.Body
+	}
+
+	// Use io.Copy for proper streaming - it handles chunked transfer encoding correctly
+	written, err := io.Copy(c.Writer, reader)
+	if err != nil && err != io.EOF {
+		log.Printf("[ERROR] token=%s stream copy error: written=%d err=%v", tokenID, written, err)
 	}
 
 	flusher.Flush()
-
-	for {
-		line, err := reader.ReadString('\n')
-		if err != nil {
-			if err != io.EOF {
-				log.Printf("[ERROR] token=%s stream read error: %v", tokenID, err)
-			}
-			break
-		}
-
-		c.Writer.WriteString(line)
-		c.Writer.Flush()
-		flusher.Flush()
-	}
-
-	log.Printf("[DEBUG] token=%s model=%s OpenAI stream completed", tokenID, model)
+	log.Printf("[DEBUG] token=%s model=%s OpenAI stream completed written=%d", tokenID, model, written)
 
 	recordUsage(tokenID, c.Request.URL.Path, model, 0, 0, 0, true, "streaming")
 	database.DB.Exec("UPDATE tokens SET used_requests = used_requests + 1 WHERE id = ?", tokenID)
@@ -303,7 +294,12 @@ func handleAnthropicStream(c *gin.Context, resp *http.Response, tokenID, model s
 	}
 	sendAnthropicEvent(c, flusher, "message_start", messageStart)
 
-	var reader *bufio.Reader
+	var inputTokens, outputTokens int
+	currentBlockIndex := -1
+	currentBlockType := ""
+
+	// Use bufio.Scanner for robust SSE line parsing
+	var scanner *bufio.Scanner
 	if resp.Header.Get("Content-Encoding") == "gzip" {
 		gzipReader, err := gzip.NewReader(resp.Body)
 		if err != nil {
@@ -311,24 +307,15 @@ func handleAnthropicStream(c *gin.Context, resp *http.Response, tokenID, model s
 			return
 		}
 		defer gzipReader.Close()
-		reader = bufio.NewReader(gzipReader)
+		scanner = bufio.NewScanner(gzipReader)
 	} else {
-		reader = bufio.NewReader(resp.Body)
+		scanner = bufio.NewScanner(resp.Body)
 	}
+	// SSE lines are typically small, but set a reasonable limit
+	scanner.Buffer(make([]byte, 1024), 64*1024)
 
-	currentBlockIndex := -1
-	currentBlockType := ""
-	var inputTokens, outputTokens int
-
-	for {
-		line, err := reader.ReadString('\n')
-		if err != nil {
-			if err != io.EOF {
-				log.Printf("[ERROR] token=%s stream read error: %v", tokenID, err)
-			}
-			break
-		}
-
+	for scanner.Scan() {
+		line := scanner.Text()
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" || !strings.HasPrefix(trimmed, "data: ") {
 			continue
@@ -446,6 +433,10 @@ func handleAnthropicStream(c *gin.Context, resp *http.Response, tokenID, model s
 				},
 			})
 		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		log.Printf("[ERROR] token=%s stream scan error: %v", tokenID, err)
 	}
 
 	sendAnthropicEvent(c, flusher, "message_stop", map[string]interface{}{
