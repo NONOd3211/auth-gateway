@@ -5,12 +5,14 @@ import (
 	"auth-gateway/database"
 	"auth-gateway/models"
 	"auth-gateway/providers"
+	"auth-gateway/providers/minimax"
 	"bufio"
 	"bytes"
 	"compress/gzip"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -82,12 +84,18 @@ func ProxyRequest(cfg *config.Config) gin.HandlerFunc {
 		model := extractModel(string(bodyBytes))
 		isStreamRequest := isStreamEnabled(string(bodyBytes))
 
+		// Detect if original request is in Anthropic format
+		isAnthropicRequest := minimax.IsAnthropicFormatRequest(bodyBytes)
+		if isAnthropicRequest {
+			log.Printf("[DEBUG] token=%s path=%s detected Anthropic format request", tokenID, c.Request.URL.Path)
+		}
+
 		bodyPreview := string(bodyBytes)
 		if len(bodyPreview) > 200 {
 			bodyPreview = bodyPreview[:200]
 		}
-		log.Printf("[DEBUG] token=%s path=%s model=%s stream=%v request_body_preview=%s",
-			tokenID, c.Request.URL.Path, model, isStreamRequest, bodyPreview)
+		log.Printf("[DEBUG] token=%s path=%s model=%s stream=%v is_anthropic=%v request_body_preview=%s",
+			tokenID, c.Request.URL.Path, model, isStreamRequest, isAnthropicRequest, bodyPreview)
 
 		// Get the appropriate provider based on model
 		provider := providerManager.GetProviderForModel(model)
@@ -147,11 +155,15 @@ func ProxyRequest(cfg *config.Config) gin.HandlerFunc {
 			strings.Contains(contentType, "application/x-ndjson") ||
 			isStreamRequest
 
-		log.Printf("[DEBUG] token=%s path=%s upstream_content_type=%s is_stream_request=%v is_streaming=%v",
-			tokenID, c.Request.URL.Path, contentType, isStreamRequest, isStreaming)
+		log.Printf("[DEBUG] token=%s path=%s upstream_content_type=%s is_stream_request=%v is_streaming=%v is_anthropic=%v",
+			tokenID, c.Request.URL.Path, contentType, isStreamRequest, isStreaming, isAnthropicRequest)
 
 		if isStreaming {
-			handleStreamingResponse(c, resp, tokenID, model, token)
+			if isAnthropicRequest {
+				handleAnthropicStreamingResponse(c, resp, tokenID, model, token)
+			} else {
+				handleStreamingResponse(c, resp, tokenID, model, token)
+			}
 			return
 		}
 
@@ -190,6 +202,17 @@ func ProxyRequest(cfg *config.Config) gin.HandlerFunc {
 			recordUsage(tokenID, c.Request.URL.Path, model, 0, 0, 0, false, errorMsg)
 			c.JSON(http.StatusBadGateway, gin.H{"error": "MiniMax API error: " + errorMsg})
 			return
+		}
+
+		// Convert response to Anthropic format if needed
+		if isAnthropicRequest {
+			convertedBody, err := minimax.ConvertOpenAIToAnthropicResponse(body, model)
+			if err == nil {
+				body = convertedBody
+				log.Printf("[DEBUG] token=%s path=%s converted response to Anthropic format", tokenID, c.Request.URL.Path)
+			} else {
+				log.Printf("[DEBUG] token=%s path=%s failed to convert to Anthropic format: %v", tokenID, c.Request.URL.Path, err)
+			}
 		}
 
 		c.Data(resp.StatusCode, resp.Header.Get("Content-Type"), body)
@@ -356,6 +379,215 @@ func handleStreamingResponse(c *gin.Context, resp *http.Response, tokenID, model
 	if token.WeeklyLimit {
 		database.DB.Exec("UPDATE tokens SET weekly_used = weekly_used + 1 WHERE id = ?", tokenID)
 	}
+}
+
+// handleAnthropicStreamingResponse handles SSE streaming response and converts to Anthropic format
+func handleAnthropicStreamingResponse(c *gin.Context, resp *http.Response, tokenID, model string, token models.Token) {
+	// Set SSE headers
+	c.Header("Content-Type", "text/event-stream")
+	c.Header("Cache-Control", "no-cache")
+	c.Header("Connection", "keep-alive")
+	c.Status(resp.StatusCode)
+
+	flusher, ok := c.Writer.(http.Flusher)
+	if !ok {
+		log.Printf("[ERROR] token=%s streaming not supported by response writer", tokenID)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "streaming not supported"})
+		return
+	}
+
+	// Send message_start event
+	startEvent := map[string]interface{}{
+		"type":    "message_start",
+		"message": map[string]interface{}{
+			"id":           generateID(),
+			"type":         "message",
+			"role":         "assistant",
+			"model":        model,
+			"content":      []interface{}{},
+			"stop_reason":  nil,
+			"stop_sequence": nil,
+			"usage": map[string]interface{}{
+				"input_tokens":  0,
+				"output_tokens": 0,
+			},
+		},
+	}
+	startJSON, _ := json.Marshal(startEvent)
+	c.Writer.WriteString(fmt.Sprintf("data: %s\n\n", startJSON))
+	c.Writer.Flush()
+	flusher.Flush()
+
+	// Send content_block_start event
+	blockStart := map[string]interface{}{
+		"type":  "content_block_start",
+		"index": 0,
+		"content_block": map[string]interface{}{
+			"type": "text",
+			"text": "",
+		},
+	}
+	blockStartJSON, _ := json.Marshal(blockStart)
+	c.Writer.WriteString(fmt.Sprintf("data: %s\n\n", blockStartJSON))
+	c.Writer.Flush()
+	flusher.Flush()
+
+	// Handle gzip compressed response
+	var reader *bufio.Reader
+	if resp.Header.Get("Content-Encoding") == "gzip" {
+		gzipReader, err := gzip.NewReader(resp.Body)
+		if err != nil {
+			log.Printf("[ERROR] token=%s failed to create gzip reader: %v", tokenID, err)
+			c.JSON(http.StatusBadGateway, gin.H{"error": "failed to decompress response"})
+			return
+		}
+		defer gzipReader.Close()
+		reader = bufio.NewReader(gzipReader)
+		log.Printf("[DEBUG] token=%s handling gzip compressed SSE stream for Anthropic", tokenID)
+	} else {
+		reader = bufio.NewReader(resp.Body)
+	}
+
+	lineCount := 0
+	totalOutputTokens := 0
+
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			if err != io.EOF {
+				log.Printf("[ERROR] token=%s streaming read error: %v", tokenID, err)
+			}
+			break
+		}
+
+		lineCount++
+		trimmed := strings.TrimSpace(line)
+
+		// Skip empty lines
+		if trimmed == "" {
+			continue
+		}
+
+		// Parse OpenAI SSE format
+		if !strings.HasPrefix(trimmed, "data: ") {
+			continue
+		}
+
+		data := strings.TrimPrefix(trimmed, "data: ")
+		if data == "[DONE]" {
+			break
+		}
+
+		var openaiChunk map[string]interface{}
+		if err := json.Unmarshal([]byte(data), &openaiChunk); err != nil {
+			continue
+		}
+
+		// Convert to Anthropic format
+		anthropicChunk := convertOpenAIChunkToAnthropicChunk(openaiChunk)
+		if anthropicChunk != nil {
+			chunkJSON, _ := json.Marshal(anthropicChunk)
+			c.Writer.WriteString(fmt.Sprintf("data: %s\n\n", chunkJSON))
+			c.Writer.Flush()
+			flusher.Flush()
+			totalOutputTokens++
+
+			// Log preview
+			if content, ok := anthropicChunk["delta"].(map[string]interface{}); ok {
+				if text, ok := content["text"].(string); ok && text != "" {
+					preview := text
+					if len(preview) > 80 {
+						preview = preview[:80] + "..."
+					}
+					log.Printf("[DEBUG] token=%s anthropic stream line %d: %s", tokenID, lineCount, preview)
+				}
+			}
+		}
+	}
+
+	// Send content_block_stop event
+	blockStop := map[string]interface{}{
+		"type":  "content_block_stop",
+		"index": 0,
+	}
+	blockStopJSON, _ := json.Marshal(blockStop)
+	c.Writer.WriteString(fmt.Sprintf("data: %s\n\n", blockStopJSON))
+	c.Writer.Flush()
+	flusher.Flush()
+
+	// Send message_delta event
+	messageDelta := map[string]interface{}{
+		"type": "message_delta",
+		"delta": map[string]interface{}{
+			"stop_reason": "end_turn",
+		},
+		"usage": map[string]interface{}{
+			"output_tokens": totalOutputTokens,
+		},
+	}
+	messageDeltaJSON, _ := json.Marshal(messageDelta)
+	c.Writer.WriteString(fmt.Sprintf("data: %s\n\n", messageDeltaJSON))
+	c.Writer.Flush()
+	flusher.Flush()
+
+	// Send message_stop event
+	stopEvent := map[string]interface{}{
+		"type": "message_stop",
+	}
+	stopJSON, _ := json.Marshal(stopEvent)
+	c.Writer.WriteString(fmt.Sprintf("data: %s\n\n", stopJSON))
+	c.Writer.Flush()
+	flusher.Flush()
+
+	log.Printf("[DEBUG] token=%s model=%s anthropic stream completed lines=%d tokens=%d",
+		tokenID, model, lineCount, totalOutputTokens)
+
+	// Record usage
+	recordUsage(tokenID, c.Request.URL.Path, model, 0, totalOutputTokens, 0, true, "streaming")
+
+	// Update token counters
+	database.DB.Exec("UPDATE tokens SET used_requests = used_requests + 1 WHERE id = ?", tokenID)
+	if token.HourlyLimit {
+		database.DB.Exec("UPDATE tokens SET hourly_used = hourly_used + 1 WHERE id = ?", tokenID)
+	}
+	if token.WeeklyLimit {
+		database.DB.Exec("UPDATE tokens SET weekly_used = weekly_used + 1 WHERE id = ?", tokenID)
+	}
+}
+
+// convertOpenAIChunkToAnthropicChunk converts an OpenAI SSE chunk to Anthropic format
+func convertOpenAIChunkToAnthropicChunk(openaiChunk map[string]interface{}) map[string]interface{} {
+	choices, ok := openaiChunk["choices"].([]interface{})
+	if !ok || len(choices) == 0 {
+		return nil
+	}
+
+	choice := choices[0].(map[string]interface{})
+	delta, ok := choice["delta"].(map[string]interface{})
+	if !ok {
+		return nil
+	}
+
+	// Handle content
+	if content, ok := delta["content"].(string); ok && content != "" {
+		return map[string]interface{}{
+			"type":  "content_block_delta",
+			"index": 0,
+			"delta": map[string]interface{}{
+				"type": "text_delta",
+				"text": content,
+			},
+		}
+	}
+
+	return nil
+}
+
+// generateID generates a unique ID for Anthropic messages
+func generateID() string {
+	b := make([]byte, 16)
+	rand.Read(b)
+	return fmt.Sprintf("msg_%x", b)
 }
 
 // parseTokenUsage parses token usage from response body

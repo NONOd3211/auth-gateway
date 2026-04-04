@@ -15,10 +15,10 @@ type ChatRequest struct {
 	Stream   bool                     `json:"stream,omitempty"`
 }
 
-func BuildRequest(req *http.Request, apiKey string, upstreamURL string) (*http.Request, error) {
+func BuildRequest(req *http.Request, apiKey string, upstreamURL string) (*http.Request, bool, error) {
 	body, err := io.ReadAll(req.Body)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	req.Body.Close()
 
@@ -34,7 +34,7 @@ func BuildRequest(req *http.Request, apiKey string, upstreamURL string) (*http.R
 
 	proxyReq, err := http.NewRequest(req.Method, targetURL, bytes.NewReader(body))
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
 	proxyReq.Header.Set("Content-Type", "application/json")
@@ -50,7 +50,7 @@ func BuildRequest(req *http.Request, apiKey string, upstreamURL string) (*http.R
 		proxyReq.Header[key] = values
 	}
 
-	return proxyReq, nil
+	return proxyReq, isConverted, nil
 }
 
 // detectAndConvertFormat detects the format and converts to OpenAI/MiniMax format

@@ -30,7 +30,7 @@ func (e *Executor) Name() string {
 }
 
 func (e *Executor) Execute(req *http.Request, apiKey string) (*http.Response, error) {
-	proxyReq, err := BuildRequest(req, apiKey, e.baseURL)
+	proxyReq, _, err := BuildRequest(req, apiKey, e.baseURL)
 	if err != nil {
 		return nil, err
 	}
@@ -46,6 +46,8 @@ func (e *Executor) Execute(req *http.Request, apiKey string) (*http.Response, er
 		body, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
 		log.Printf("[MiniMax] Error response: status=%d body=%s", resp.StatusCode, string(body))
+		// Restore body for error response
+		resp.Body = io.NopCloser(bytes.NewReader(body))
 	}
 
 	return resp, nil
