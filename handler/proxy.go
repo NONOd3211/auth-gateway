@@ -410,19 +410,6 @@ func handleAnthropicStreamingResponse(c *gin.Context, resp *http.Response, token
 	c.Writer.Flush()
 	flusher.Flush()
 
-	blockStart := map[string]interface{}{
-		"type":  "content_block_start",
-		"index": 0,
-		"content_block": map[string]interface{}{
-			"type": "text",
-			"text": "",
-		},
-	}
-	blockStartJSON, _ := json.Marshal(blockStart)
-	c.Writer.WriteString(fmt.Sprintf("event: content_block_start\ndata: %s\n\n", blockStartJSON))
-	c.Writer.Flush()
-	flusher.Flush()
-
 	// Handle gzip compressed response
 	var reader *bufio.Reader
 	if resp.Header.Get("Content-Encoding") == "gzip" {
@@ -442,6 +429,11 @@ func handleAnthropicStreamingResponse(c *gin.Context, resp *http.Response, token
 	lineCount := 0
 	totalOutputTokens := 0
 	var lastContent strings.Builder
+
+	// Track content block state
+	currentBlockIndex := -1
+	currentBlockType := "" // "thinking" or "text"
+	hasThinking := false
 
 	for {
 		line, err := reader.ReadString('\n')
@@ -499,7 +491,56 @@ func handleAnthropicStreamingResponse(c *gin.Context, resp *http.Response, token
 			}
 		}
 
-		anthropicChunk := convertOpenAIChunkToAnthropicChunk(openaiChunk)
+		// Detect chunk type
+		chunkType := detectChunkType(openaiChunk)
+		
+		// Handle block transitions
+		if chunkType != "" && chunkType != currentBlockType {
+			// Close current block if exists
+			if currentBlockIndex >= 0 {
+				blockStop := map[string]interface{}{
+					"type":  "content_block_stop",
+					"index": currentBlockIndex,
+				}
+				blockStopJSON, _ := json.Marshal(blockStop)
+				c.Writer.WriteString(fmt.Sprintf("event: content_block_stop\ndata: %s\n\n", blockStopJSON))
+				c.Writer.Flush()
+				flusher.Flush()
+			}
+			
+			// Start new block
+			currentBlockIndex++
+			currentBlockType = chunkType
+			
+			var blockStart map[string]interface{}
+			if chunkType == "thinking" {
+				hasThinking = true
+				blockStart = map[string]interface{}{
+					"type":  "content_block_start",
+					"index": currentBlockIndex,
+					"content_block": map[string]interface{}{
+						"type":     "thinking",
+						"thinking": "",
+					},
+				}
+			} else {
+				blockStart = map[string]interface{}{
+					"type":  "content_block_start",
+					"index": currentBlockIndex,
+					"content_block": map[string]interface{}{
+						"type": "text",
+						"text": "",
+					},
+				}
+			}
+			blockStartJSON, _ := json.Marshal(blockStart)
+			c.Writer.WriteString(fmt.Sprintf("event: content_block_start\ndata: %s\n\n", blockStartJSON))
+			c.Writer.Flush()
+			flusher.Flush()
+		}
+
+		// Convert and send chunk
+		anthropicChunk := convertOpenAIChunkToAnthropicChunkWithIndex(openaiChunk, currentBlockIndex)
 		if anthropicChunk != nil {
 			chunkJSON, _ := json.Marshal(anthropicChunk)
 			c.Writer.WriteString(fmt.Sprintf("event: content_block_delta\ndata: %s\n\n", chunkJSON))
@@ -526,14 +567,17 @@ func handleAnthropicStreamingResponse(c *gin.Context, resp *http.Response, token
 		log.Printf("[DEBUG] token=%s total content: %s", tokenID, lastContentStr)
 	}
 
-	blockStop := map[string]interface{}{
-		"type":  "content_block_stop",
-		"index": 0,
+	// Close the last block if any was opened
+	if currentBlockIndex >= 0 {
+		blockStop := map[string]interface{}{
+			"type":  "content_block_stop",
+			"index": currentBlockIndex,
+		}
+		blockStopJSON, _ := json.Marshal(blockStop)
+		c.Writer.WriteString(fmt.Sprintf("event: content_block_stop\ndata: %s\n\n", blockStopJSON))
+		c.Writer.Flush()
+		flusher.Flush()
 	}
-	blockStopJSON, _ := json.Marshal(blockStop)
-	c.Writer.WriteString(fmt.Sprintf("event: content_block_stop\ndata: %s\n\n", blockStopJSON))
-	c.Writer.Flush()
-	flusher.Flush()
 
 	messageDelta := map[string]interface{}{
 		"type": "message_delta",
@@ -573,8 +617,36 @@ func handleAnthropicStreamingResponse(c *gin.Context, resp *http.Response, token
 	}
 }
 
-// convertOpenAIChunkToAnthropicChunk converts an OpenAI SSE chunk to Anthropic format
-func convertOpenAIChunkToAnthropicChunk(openaiChunk map[string]interface{}) map[string]interface{} {
+// detectChunkType detects the type of chunk (thinking or text)
+func detectChunkType(openaiChunk map[string]interface{}) string {
+	choices, ok := openaiChunk["choices"].([]interface{})
+	if !ok || len(choices) == 0 {
+		return ""
+	}
+
+	choice, ok := choices[0].(map[string]interface{})
+	if !ok {
+		return ""
+	}
+
+	delta, ok := choice["delta"].(map[string]interface{})
+	if !ok {
+		return ""
+	}
+
+	if reasoningContent, ok := delta["reasoning_content"].(string); ok && reasoningContent != "" {
+		return "thinking"
+	}
+
+	if content, ok := delta["content"].(string); ok && content != "" {
+		return "text"
+	}
+
+	return ""
+}
+
+// convertOpenAIChunkToAnthropicChunkWithIndex converts an OpenAI SSE chunk to Anthropic format with specified index
+func convertOpenAIChunkToAnthropicChunkWithIndex(openaiChunk map[string]interface{}, blockIndex int) map[string]interface{} {
 	choices, ok := openaiChunk["choices"].([]interface{})
 	if !ok || len(choices) == 0 {
 		return nil
@@ -604,7 +676,7 @@ func convertOpenAIChunkToAnthropicChunk(openaiChunk map[string]interface{}) map[
 	if content, ok := delta["content"].(string); ok && content != "" {
 		return map[string]interface{}{
 			"type":  "content_block_delta",
-			"index": 0,
+			"index": blockIndex,
 			"delta": map[string]interface{}{
 				"type": "text_delta",
 				"text": content,
@@ -615,9 +687,9 @@ func convertOpenAIChunkToAnthropicChunk(openaiChunk map[string]interface{}) map[
 	if reasoningContent, ok := delta["reasoning_content"].(string); ok && reasoningContent != "" {
 		return map[string]interface{}{
 			"type":  "content_block_delta",
-			"index": 0,
+			"index": blockIndex,
 			"delta": map[string]interface{}{
-				"type": "thinking_delta",
+				"type":     "thinking_delta",
 				"thinking": reasoningContent,
 			},
 		}
