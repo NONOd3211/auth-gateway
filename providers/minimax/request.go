@@ -3,6 +3,7 @@ package minimax
 import (
 	"bytes"
 	"io"
+	"log"
 	"net/http"
 )
 
@@ -19,9 +20,19 @@ func BuildRequest(req *http.Request, apiKey string, upstreamURL string) (*http.R
 	}
 	req.Body.Close()
 
+	// DEBUG: log the request details
+	if len(apiKey) > 10 {
+		log.Printf("[MiniMax] API Key: %s...", apiKey[:10])
+	} else {
+		log.Printf("[MiniMax] API Key: %s", apiKey)
+	}
+	log.Printf("[MiniMax] Body: %s", string(body))
+
 	// Convert path from OpenAI format to MiniMax format
 	targetPath := convertPath(req.URL.Path)
 	targetURL := upstreamURL + targetPath
+
+	log.Printf("[MiniMax] Target URL: %s", targetURL)
 
 	proxyReq, err := http.NewRequest(req.Method, targetURL, bytes.NewReader(body))
 	if err != nil {
