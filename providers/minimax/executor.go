@@ -35,7 +35,12 @@ func (e *Executor) Execute(req *http.Request, apiKey string) (*http.Response, er
 	}
 
 	client := &http.Client{Timeout: e.timeout}
-	return client.Do(proxyReq)
+	resp, err := client.Do(proxyReq)
+	if err != nil {
+		return nil, err
+	}
+
+	return resp, nil
 }
 
 func (e *Executor) IsQuotaError(resp *http.Response) bool {
