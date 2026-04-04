@@ -312,14 +312,12 @@ func extractTextFromContent(content interface{}) string {
 
 // convertPath converts OpenAI-style paths to MiniMax-specific paths
 func convertPath(openaiPath string) string {
-	// /v1/chat/completions -> /v1/text/chatcompletion_v2
-	if openaiPath == "/v1/chat/completions" {
-		return "/v1/text/chatcompletion_v2"
-	}
-	// /v1/messages -> /v1/text/chatcompletion_v2 (Claude Code with ANTHROPIC_BASE_URL)
+	// MiniMax supports OpenAI-compatible API at /v1/chat/completions
+	// So we can pass through the path directly
+	// /v1/messages -> /v1/chat/completions (for Anthropic format requests)
 	if openaiPath == "/v1/messages" {
-		return "/v1/text/chatcompletion_v2"
+		return "/v1/chat/completions"
 	}
-	// Other paths pass through as-is
+	// Keep other paths as-is (OpenAI compatible)
 	return openaiPath
 }
