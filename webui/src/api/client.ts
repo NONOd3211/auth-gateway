@@ -50,6 +50,20 @@ export interface UsageStats {
   output_tokens: number
 }
 
+export interface UsageRecord {
+  id: string
+  token_id: string
+  timestamp: string
+  model: string
+  input_tokens: number
+  output_tokens: number
+  cache_tokens: number
+  total_tokens: number
+  success: boolean
+  error_message: string
+  request_path: string
+}
+
 export const tokenApi = {
   list: () => api.get<{ tokens: Token[] }>('/tokens'),
   get: (id: string) => api.get<{ token: Token; usage_count: number }>(`/tokens/${id}`),
@@ -74,6 +88,8 @@ export const usageApi = {
   daily: (params?: { token_id?: string }) =>
     api.get<{ daily: Array<{ date: string; requests: number; total_tokens: number }> }>('/usage/daily', { params }),
   byToken: (id: string) => api.get<{ records: any[] }>(`/usage/token/${id}`),
+  events: (params?: { token_id?: string }) =>
+    api.get<{ records: UsageRecord[]; total: number; page: number; page_size: number }>('/usage/events', { params }),
 }
 
 export default api

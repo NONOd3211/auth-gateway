@@ -65,15 +65,16 @@ func (t *Token) CheckAndUpdateLimits() {
 }
 
 type UsageRecord struct {
-	ID              string    `json:"id" gorm:"primaryKey"`
-	TokenID         string    `json:"token_id" gorm:"index"`
-	Timestamp       time.Time `json:"timestamp"`
-	Model           string    `json:"model" gorm:"size:100"`
-	InputTokens     int       `json:"input_tokens"`
-	OutputTokens    int       `json:"output_tokens"`
-	TotalTokens     int       `json:"total_tokens"`
-	UpstreamProvider string   `json:"upstream_provider" gorm:"size:50"`
-	Success         bool      `json:"success"`
-	ErrorMessage    string    `json:"error_message" gorm:"size:500"`
-	RequestPath     string    `json:"request_path" gorm:"size:200"`
+	ID               string    `json:"id" gorm:"primaryKey"`
+	TokenID          string    `json:"token_id" gorm:"index"`
+	Timestamp        time.Time `json:"timestamp"`
+	Model            string    `json:"model" gorm:"size:100"`
+	InputTokens      int       `json:"input_tokens"`
+	OutputTokens     int       `json:"output_tokens"`
+	CacheTokens      int       `json:"cache_tokens"`
+	TotalTokens      int       `json:"total_tokens"`
+	UpstreamProvider string    `json:"upstream_provider" gorm:"size:50"`
+	Success          bool      `json:"success"`
+	ErrorMessage     string    `json:"error_message" gorm:"size:500"`
+	RequestPath      string    `json:"request_path" gorm:"size:200"`
 }

@@ -6,6 +6,7 @@ import { TokenCreate } from './pages/TokenCreate'
 import { TokenEdit } from './pages/TokenEdit'
 import { ApiKeyList } from './pages/ApiKeyList'
 import { ApiKeyCreate } from './pages/ApiKeyCreate'
+import { UsageEvents } from './pages/UsageEvents'
 import { UserPanel } from './pages/UserPanel'
 import { Navbar } from './components/Navbar'
 
@@ -28,6 +29,7 @@ function App() {
                 <Route path="/tokens/:id" element={<TokenEdit />} />
                 <Route path="/keys" element={<ApiKeyList />} />
                 <Route path="/keys/create" element={<ApiKeyCreate />} />
+                <Route path="/usage" element={<UsageEvents />} />
               </Routes>
             </>
           }

@@ -68,6 +68,36 @@ func GetUsageByToken(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"records": records})
 }
 
+// GetUsageEvents returns usage records with optional filtering
+func GetUsageEvents(c *gin.Context) {
+	tokenID := c.Query("token_id")
+	page := 1
+	pageSize := 50
+
+	query := database.DB.Model(&models.UsageRecord{})
+
+	if tokenID != "" {
+		query = query.Where("token_id = ?", tokenID)
+	}
+
+	var total int64
+	query.Count(&total)
+
+	var records []models.UsageRecord
+	offset := (page - 1) * pageSize
+	if err := query.Order("timestamp DESC").Offset(offset).Limit(pageSize).Find(&records).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"records": records,
+		"total":   total,
+		"page":    page,
+		"page_size": pageSize,
+	})
+}
+
 func GetUsageByDay(c *gin.Context) {
 	tokenID := c.Query("token_id")
 

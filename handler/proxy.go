@@ -85,7 +85,7 @@ func ProxyRequest(cfg *config.Config) gin.HandlerFunc {
 		// Get API key for this token from ProviderManager
 		apiKey, err := providerManager.GetAPIKeyForToken(tokenID)
 		if err != nil {
-			recordUsage(tokenID, c.Request.URL.Path, model, 0, 0, false, "failed to get API key: "+err.Error())
+			recordUsage(tokenID, c.Request.URL.Path, model, 0, 0, 0, false, "failed to get API key: "+err.Error())
 			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "no available API keys"})
 			return
 		}
@@ -93,7 +93,7 @@ func ProxyRequest(cfg *config.Config) gin.HandlerFunc {
 		// Forward request using the selected provider
 		resp, err := provider.Execute(c.Request, apiKey.Key)
 		if err != nil {
-			recordUsage(tokenID, c.Request.URL.Path, model, 0, 0, false, err.Error())
+			recordUsage(tokenID, c.Request.URL.Path, model, 0, 0, 0, false, err.Error())
 			c.JSON(http.StatusBadGateway, gin.H{"error": "upstream error: " + err.Error()})
 			return
 		}
@@ -112,7 +112,7 @@ func ProxyRequest(cfg *config.Config) gin.HandlerFunc {
 
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
-			recordUsage(tokenID, c.Request.URL.Path, model, 0, 0, false, "failed to read response body: "+err.Error())
+			recordUsage(tokenID, c.Request.URL.Path, model, 0, 0, 0, false, "failed to read response body: "+err.Error())
 			c.JSON(http.StatusBadGateway, gin.H{"error": "failed to read response body"})
 			return
 		}
@@ -129,7 +129,21 @@ func ProxyRequest(cfg *config.Config) gin.HandlerFunc {
 			database.DB.Exec("UPDATE tokens SET weekly_used = weekly_used + 1 WHERE id = ?", tokenID)
 		}
 
-		recordUsage(tokenID, c.Request.URL.Path, model, 0, 0, true, "")
+		// Parse token usage from response
+		inputTokens, outputTokens, cacheTokens := parseTokenUsage(body, resp.Header.Get("Content-Type"))
+
+		recordUsage(tokenID, c.Request.URL.Path, model, inputTokens, outputTokens, cacheTokens, true, "")
+
+		// Update usage count synchronously to avoid race conditions
+		database.DB.Exec("UPDATE tokens SET used_requests = used_requests + 1 WHERE id = ?", tokenID)
+
+		// Update hourly and weekly counters
+		if token.HourlyLimit {
+			database.DB.Exec("UPDATE tokens SET hourly_used = hourly_used + 1 WHERE id = ?", tokenID)
+		}
+		if token.WeeklyLimit {
+			database.DB.Exec("UPDATE tokens SET weekly_used = weekly_used + 1 WHERE id = ?", tokenID)
+		}
 	}
 }
 
@@ -145,7 +159,29 @@ func extractModel(body string) string {
 	return ""
 }
 
-func recordUsage(tokenID, path, model string, inputTokens, outputTokens int, success bool, errMsg string) {
+// parseTokenUsage parses token usage from response body
+// Returns inputTokens, outputTokens, cacheTokens
+func parseTokenUsage(body []byte, contentType string) (int, int, int) {
+	if !strings.Contains(contentType, "application/json") {
+		return 0, 0, 0
+	}
+
+	var resp struct {
+		Usage struct {
+			InputTokens  int `json:"input_tokens"`
+			OutputTokens int `json:"output_tokens"`
+			TotalTokens  int `json:"total_tokens"`
+		} `json:"usage"`
+	}
+
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return 0, 0, 0
+	}
+
+	return resp.Usage.InputTokens, resp.Usage.OutputTokens, 0
+}
+
+func recordUsage(tokenID, path, model string, inputTokens, outputTokens, cacheTokens int, success bool, errMsg string) {
 	// Generate unique ID with random suffix to avoid collisions
 	randomBytes := make([]byte, 4)
 	if _, err := rand.Read(randomBytes); err != nil {
@@ -164,6 +200,7 @@ func recordUsage(tokenID, path, model string, inputTokens, outputTokens int, suc
 		Model:        model,
 		InputTokens:  inputTokens,
 		OutputTokens: outputTokens,
+		CacheTokens:  cacheTokens,
 		TotalTokens:  inputTokens + outputTokens,
 		Success:      success,
 		ErrorMessage: errMsg,

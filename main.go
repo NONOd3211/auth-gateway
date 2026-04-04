@@ -143,6 +143,7 @@ func runAdminPanel(cfg *config.Config) {
 		admin.GET("/usage", handler.GetUsageStats)
 		admin.GET("/usage/daily", handler.GetUsageByDay)
 		admin.GET("/usage/token/:id", handler.GetUsageByToken)
+		admin.GET("/usage/events", handler.GetUsageEvents)
 
 		admin.GET("/keys", handler.ListAPIKeys)
 		admin.POST("/keys", handler.CreateAPIKey)
