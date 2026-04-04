@@ -482,6 +482,23 @@ func handleAnthropicStreamingResponse(c *gin.Context, resp *http.Response, token
 			continue
 		}
 
+		choices, _ := openaiChunk["choices"].([]interface{})
+		if len(choices) > 0 {
+			if choice, ok := choices[0].(map[string]interface{}); ok {
+				if delta, ok := choice["delta"].(map[string]interface{}); ok {
+					if content, ok := delta["content"].(string); ok && len(content) > 0 {
+						log.Printf("[DEBUG] token=%s delta content length=%d preview=%s", tokenID, len(content), truncateString(content, 100))
+					}
+					if reasoningContent, ok := delta["reasoning_content"].(string); ok && len(reasoningContent) > 0 {
+						log.Printf("[DEBUG] token=%s delta reasoning_content length=%d preview=%s", tokenID, len(reasoningContent), truncateString(reasoningContent, 100))
+					}
+				}
+				if finishReason, ok := choice["finish_reason"]; ok && finishReason != nil {
+					log.Printf("[DEBUG] token=%s finish_reason=%v", tokenID, finishReason)
+				}
+			}
+		}
+
 		anthropicChunk := convertOpenAIChunkToAnthropicChunk(openaiChunk)
 		if anthropicChunk != nil {
 			chunkJSON, _ := json.Marshal(anthropicChunk)
@@ -490,9 +507,13 @@ func handleAnthropicStreamingResponse(c *gin.Context, resp *http.Response, token
 			flusher.Flush()
 			totalOutputTokens++
 
-			if content, ok := anthropicChunk["delta"].(map[string]interface{}); ok {
-				if text, ok := content["text"].(string); ok && text != "" {
+			if delta, ok := anthropicChunk["delta"].(map[string]interface{}); ok {
+				if text, ok := delta["text"].(string); ok && text != "" {
 					lastContent.WriteString(text)
+				}
+				if thinking, ok := delta["thinking"].(string); ok && thinking != "" {
+					lastContent.WriteString("[THINKING] ")
+					lastContent.WriteString(thinking)
 				}
 			}
 		}
@@ -591,6 +612,17 @@ func convertOpenAIChunkToAnthropicChunk(openaiChunk map[string]interface{}) map[
 		}
 	}
 
+	if reasoningContent, ok := delta["reasoning_content"].(string); ok && reasoningContent != "" {
+		return map[string]interface{}{
+			"type":  "content_block_delta",
+			"index": 0,
+			"delta": map[string]interface{}{
+				"type": "thinking_delta",
+				"thinking": reasoningContent,
+			},
+		}
+	}
+
 	if finishReason, ok := choice["finish_reason"].(string); ok && finishReason != "" {
 		return map[string]interface{}{
 			"type": "message_delta",
@@ -604,6 +636,13 @@ func convertOpenAIChunkToAnthropicChunk(openaiChunk map[string]interface{}) map[
 	}
 
 	return nil
+}
+
+func truncateString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
 }
 
 // generateID generates a unique ID for Anthropic messages

@@ -59,13 +59,27 @@ func convertOpenAIChunkToAnthropic(openaiChunk map[string]interface{}, model str
 		return nil
 	}
 
-	choice := choices[0].(map[string]interface{})
-	delta, ok := choice["delta"].(map[string]interface{})
+	choice, ok := choices[0].(map[string]interface{})
 	if !ok {
 		return nil
 	}
 
-	// Handle content
+	delta, ok := choice["delta"].(map[string]interface{})
+	if !ok {
+		if finishReason, ok := choice["finish_reason"].(string); ok && finishReason != "" {
+			return map[string]interface{}{
+				"type": "message_delta",
+				"delta": map[string]interface{}{
+					"stop_reason": finishReason,
+				},
+				"usage": map[string]interface{}{
+					"output_tokens": 0,
+				},
+			}
+		}
+		return nil
+	}
+
 	if content, ok := delta["content"].(string); ok && content != "" {
 		return map[string]interface{}{
 			"type":  "content_block_delta",
@@ -77,7 +91,17 @@ func convertOpenAIChunkToAnthropic(openaiChunk map[string]interface{}, model str
 		}
 	}
 
-	// Handle finish
+	if reasoningContent, ok := delta["reasoning_content"].(string); ok && reasoningContent != "" {
+		return map[string]interface{}{
+			"type":  "content_block_delta",
+			"index": 0,
+			"delta": map[string]interface{}{
+				"type":     "thinking_delta",
+				"thinking": reasoningContent,
+			},
+		}
+	}
+
 	if finishReason, ok := choice["finish_reason"].(string); ok && finishReason != "" {
 		return map[string]interface{}{
 			"type": "message_delta",
