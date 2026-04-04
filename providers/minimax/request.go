@@ -40,7 +40,9 @@ func BuildRequest(req *http.Request, apiKey string, upstreamURL string) (*http.R
 	proxyReq.Header.Set("Content-Type", "application/json")
 	proxyReq.Header.Set("Authorization", "Bearer "+apiKey)
 
-	// Copy other headers except Host, Authorization, and Accept-Encoding (we set our own or don't want compression)
+	// Copy other headers except Host, Authorization, and Accept-Encoding
+	// Note: We don't set Accept-Encoding to avoid manual gzip handling issues
+	// Go's http.Client will handle compression automatically if we don't set it manually
 	for key, values := range req.Header {
 		if key == "Host" || key == "Content-Length" || key == "Authorization" || key == "Accept-Encoding" {
 			continue

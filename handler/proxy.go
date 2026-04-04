@@ -260,7 +260,22 @@ func handleStreamingResponse(c *gin.Context, resp *http.Response, tokenID, model
 		return
 	}
 
-	reader := bufio.NewReader(resp.Body)
+	// Handle gzip compressed response
+	var reader *bufio.Reader
+	if resp.Header.Get("Content-Encoding") == "gzip" {
+		gzipReader, err := gzip.NewReader(resp.Body)
+		if err != nil {
+			log.Printf("[ERROR] token=%s failed to create gzip reader: %v", tokenID, err)
+			c.JSON(http.StatusBadGateway, gin.H{"error": "failed to decompress response"})
+			return
+		}
+		defer gzipReader.Close()
+		reader = bufio.NewReader(gzipReader)
+		log.Printf("[DEBUG] token=%s handling gzip compressed SSE stream", tokenID)
+	} else {
+		reader = bufio.NewReader(resp.Body)
+	}
+
 	lineCount := 0
 	sawDone := false
 	buffer := make([]string, 0)
