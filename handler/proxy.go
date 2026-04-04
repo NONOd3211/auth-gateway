@@ -5,6 +5,8 @@ import (
 	"auth-gateway/database"
 	"auth-gateway/models"
 	"auth-gateway/providers"
+	"bytes"
+	"compress/gzip"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -143,6 +145,18 @@ func ProxyRequest(cfg *config.Config) gin.HandlerFunc {
 			c.JSON(http.StatusBadGateway, gin.H{"error": "failed to read response body"})
 			return
 		}
+
+		// Decompress gzip response if needed
+		if resp.Header.Get("Content-Encoding") == "gzip" {
+			body, err = decompressGzip(body)
+			if err != nil {
+				log.Printf("[DEBUG] token=%s path=%s gzip decompress error: %v", tokenID, c.Request.URL.Path, err)
+				recordUsage(tokenID, c.Request.URL.Path, model, 0, 0, 0, false, "failed to decompress gzip response")
+				c.JSON(http.StatusBadGateway, gin.H{"error": "failed to decompress response"})
+				return
+			}
+		}
+
 		log.Printf("[DEBUG] token=%s path=%s MiniMax response body: %s", tokenID, c.Request.URL.Path, string(body))
 
 		// Check if MiniMax returned an error
@@ -242,6 +256,16 @@ func isMiniMaxError(body []byte) (bool, string) {
 		return true, errResp.Error.Message
 	}
 	return false, ""
+}
+
+// decompressGzip decompresses gzip-encoded data
+func decompressGzip(data []byte) ([]byte, error) {
+	r, err := gzip.NewReader(bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	defer r.Close()
+	return io.ReadAll(r)
 }
 
 func recordUsage(tokenID, path, model string, inputTokens, outputTokens, cacheTokens int, success bool, errMsg string) {
