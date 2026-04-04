@@ -3,6 +3,7 @@ package minimax
 import (
 	"auth-gateway/config"
 	"io"
+	"log"
 	"net/http"
 	"time"
 )
@@ -38,6 +39,13 @@ func (e *Executor) Execute(req *http.Request, apiKey string) (*http.Response, er
 	resp, err := client.Do(proxyReq)
 	if err != nil {
 		return nil, err
+	}
+
+	// Check for errors in response
+	if resp.StatusCode >= 400 {
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		log.Printf("[MiniMax] Error response: status=%d body=%s", resp.StatusCode, string(body))
 	}
 
 	return resp, nil
