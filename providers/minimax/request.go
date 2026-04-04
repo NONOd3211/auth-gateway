@@ -170,8 +170,10 @@ func convertAnthropicMessagesToOpenAI(body []byte, req map[string]interface{}, m
 	converted := map[string]interface{}{
 		"model":    model,
 		"messages": convertedMessages,
+		"stream":   false, // Disable streaming by default
 	}
 
+	// Preserve stream setting if explicitly set by client
 	if stream, ok := req["stream"]; ok {
 		converted["stream"] = stream
 	}

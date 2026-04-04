@@ -70,7 +70,7 @@ func ProxyRequest(cfg *config.Config) gin.HandlerFunc {
 		token.CheckAndUpdateLimits()
 		database.DB.Save(&token)
 
-		// Read request body to determine model
+		// Read request body to determine model and stream setting
 		bodyBytes, err := io.ReadAll(c.Request.Body)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "failed to read request body"})
@@ -79,6 +79,7 @@ func ProxyRequest(cfg *config.Config) gin.HandlerFunc {
 
 		// Extract model name from request body
 		model := extractModel(string(bodyBytes))
+		isStreamRequest := isStreamEnabled(string(bodyBytes))
 
 		// Get the appropriate provider based on model
 		provider := providerManager.GetProviderForModel(model)
@@ -132,10 +133,40 @@ func ProxyRequest(cfg *config.Config) gin.HandlerFunc {
 			providerManager.MarkKeyFailed(apiKey.ID)
 		}
 
+		// Check if this is a streaming response (SSE)
+		contentType := resp.Header.Get("Content-Type")
+		isStreaming := strings.Contains(contentType, "text/event-stream") ||
+			strings.Contains(contentType, "application/x-ndjson") ||
+			isStreamRequest
+
+		// Copy response headers
 		for key, values := range resp.Header {
 			for _, value := range values {
 				c.Header(key, value)
 			}
+		}
+
+		if isStreaming {
+			// For streaming responses, use streaming writer
+			c.Status(resp.StatusCode)
+			c.Stream(func(w io.Writer) bool {
+				_, err := io.Copy(w, resp.Body)
+				if err != nil {
+					log.Printf("[DEBUG] token=%s path=%s streaming error: %v", tokenID, c.Request.URL.Path, err)
+				}
+				return false
+			})
+			log.Printf("[DEBUG] token=%s path=%s model=%s resp_status=%d streaming completed",
+				tokenID, c.Request.URL.Path, model, resp.StatusCode)
+			recordUsage(tokenID, c.Request.URL.Path, model, 0, 0, 0, true, "streaming")
+			database.DB.Exec("UPDATE tokens SET used_requests = used_requests + 1 WHERE id = ?", tokenID)
+			if token.HourlyLimit {
+				database.DB.Exec("UPDATE tokens SET hourly_used = hourly_used + 1 WHERE id = ?", tokenID)
+			}
+			if token.WeeklyLimit {
+				database.DB.Exec("UPDATE tokens SET weekly_used = weekly_used + 1 WHERE id = ?", tokenID)
+			}
+			return
 		}
 
 		body, err := io.ReadAll(resp.Body)
@@ -200,6 +231,17 @@ func extractModel(body string) string {
 		return req.Model
 	}
 	return ""
+}
+
+// isStreamEnabled checks if streaming is enabled in the request
+func isStreamEnabled(body string) bool {
+	var req struct {
+		Stream bool `json:"stream"`
+	}
+	if err := json.Unmarshal([]byte(body), &req); err == nil {
+		return req.Stream
+	}
+	return false
 }
 
 // parseTokenUsage parses token usage from response body
