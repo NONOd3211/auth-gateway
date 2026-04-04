@@ -28,6 +28,13 @@ func main() {
 		log.Fatalf("Failed to init database: %v", err)
 	}
 
+	// Cleanup old usage records (keep max 100k)
+	if err := handler.CleanupUsageRecords(); err != nil {
+		log.Printf("Warning: failed to cleanup usage records: %v", err)
+	} else {
+		log.Printf("Usage records cleanup completed")
+	}
+
 	// Initialize provider manager after database is ready
 	initProviderManager(cfg)
 

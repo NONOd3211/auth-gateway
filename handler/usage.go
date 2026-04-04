@@ -124,3 +124,37 @@ func GetUsageByDay(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"daily": results})
 }
+
+const MaxUsageRecords = 100000
+
+// CleanupUsageRecords removes old records keeping only the latest MaxUsageRecords
+func CleanupUsageRecords() error {
+	var count int64
+	database.DB.Model(&models.UsageRecord{}).Count(&count)
+
+	if count <= MaxUsageRecords {
+		return nil
+	}
+
+	// Get the ID of the record at position MaxUsageRecords (keep everything after this)
+	var cutoffRecord models.UsageRecord
+	err := database.DB.Order("timestamp DESC").Offset(MaxUsageRecords - 1).First(&cutoffRecord).Error
+	if err != nil {
+		return err
+	}
+
+	// Delete all records older than or equal to the cutoff timestamp
+	// But we need to be more precise - delete records with timestamp <= cutoffRecord.Timestamp
+	// that are beyond our limit
+	deleteCount := count - int64(MaxUsageRecords)
+	if deleteCount <= 0 {
+		return nil
+	}
+
+	result := database.DB.Where("timestamp <= ?", cutoffRecord.Timestamp).
+		Order("timestamp ASC").
+		Limit(deleteCount).
+		Delete(&models.UsageRecord{})
+
+	return result.Error
+}
