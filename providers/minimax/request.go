@@ -3,6 +3,7 @@ package minimax
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -30,13 +31,13 @@ func BuildRequest(req *http.Request, apiKey string, upstreamURL string) (*http.R
 	}
 	log.Printf("[MiniMax] Body: %s", string(body))
 
-	// Convert Anthropic format to OpenAI format if needed
-	convertedBody, isConverted := convertAnthropicToOpenAI(body)
+	// Detect format and convert to OpenAI/MiniMax format if needed
+	convertedBody, isConverted := detectAndConvertFormat(body)
 	if isConverted {
-		log.Printf("[MiniMax] Converted Anthropic format to OpenAI format")
+		log.Printf("[MiniMax] Converted format to OpenAI format")
 		body = convertedBody
 	} else {
-		log.Printf("[MiniMax] No format conversion needed, using original body")
+		log.Printf("[MiniMax] No format conversion needed")
 	}
 
 	// Convert path from OpenAI format to MiniMax format
@@ -65,36 +66,70 @@ func BuildRequest(req *http.Request, apiKey string, upstreamURL string) (*http.R
 	return proxyReq, nil
 }
 
-// convertAnthropicToOpenAI converts Anthropic SDK format to OpenAI/MiniMax format
+// detectAndConvertFormat detects the format and converts to OpenAI/MiniMax format
 // Returns converted body and true if conversion was performed
-func convertAnthropicToOpenAI(body []byte) ([]byte, bool) {
+func detectAndConvertFormat(body []byte) ([]byte, bool) {
 	var req map[string]interface{}
 	if err := json.Unmarshal(body, &req); err != nil {
 		return body, false
 	}
 
-	// Check if this is Anthropic format (has content as array of blocks)
 	content, hasContent := req["content"]
 	if !hasContent {
+		// No content field, already OpenAI format or other
 		return body, false
 	}
 
-	contentArr, isArray := content.([]interface{})
-	if !isArray || len(contentArr) == 0 {
+	// Case 1: OpenAI format - content is string
+	if contentStr, ok := content.(string); ok && contentStr != "" {
+		log.Printf("[MiniMax] Content is string format, no conversion needed")
 		return body, false
 	}
 
-	// Check if content blocks have "type" and "text" fields (Anthropic format)
-	firstBlock, ok := contentArr[0].(map[string]interface{})
-	if !ok {
-		return body, false
+	// Case 2: Anthropic format - content is array of blocks
+	if contentArr, ok := content.([]interface{}); ok && len(contentArr) > 0 {
+		// Check if this is Anthropic format (blocks have "type" field)
+		if isAnthropicFormat(contentArr) {
+			return convertAnthropicToOpenAIMessages(body, req, contentArr)
+		}
 	}
 
-	if _, hasType := firstBlock["type"]; !hasType {
-		return body, false
+	// Case 3: content is array of message objects (some providers use this)
+	if contentArr, ok := content.([]interface{}); ok && len(contentArr) > 0 {
+		if isMessagesArray(contentArr) {
+			return convertMessagesArrayToOpenAI(body, req, contentArr)
+		}
 	}
 
-	// This is Anthropic format, convert it
+	return body, false
+}
+
+// isAnthropicFormat checks if content blocks are Anthropic format
+func isAnthropicFormat(contentArr []interface{}) bool {
+	for _, block := range contentArr {
+		if blockMap, ok := block.(map[string]interface{}); ok {
+			if _, hasType := blockMap["type"]; hasType {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// isMessagesArray checks if content is an array of message objects
+func isMessagesArray(contentArr []interface{}) bool {
+	for _, msg := range contentArr {
+		if msgMap, ok := msg.(map[string]interface{}); ok {
+			if _, hasRole := msgMap["role"]; hasRole {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// convertAnthropicToOpenAIMessages converts Anthropic format to OpenAI messages format
+func convertAnthropicToOpenAIMessages(body []byte, req map[string]interface{}, contentArr []interface{}) ([]byte, bool) {
 	messages := []map[string]interface{}{}
 
 	// Extract system prompt
@@ -153,11 +188,54 @@ func convertAnthropicToOpenAI(body []byte) ([]byte, bool) {
 	return result, true
 }
 
+// convertMessagesArrayToOpenAI converts array of messages to OpenAI format
+func convertMessagesArrayToOpenAI(body []byte, req map[string]interface{}, contentArr []interface{}) ([]byte, bool) {
+	messages := []map[string]interface{}{}
+
+	for _, msg := range contentArr {
+		if msgMap, ok := msg.(map[string]interface{}); ok {
+			role, _ := msgMap["role"].(string)
+			msgContent := msgMap["content"]
+
+			// Handle content that might be array (Anthropic style inside messages)
+			contentStr := extractTextFromContent(msgContent)
+
+			messages = append(messages, map[string]interface{}{
+				"role":    role,
+				"content": contentStr,
+			})
+		}
+	}
+
+	model := ""
+	if m, ok := req["model"].(string); ok {
+		model = m
+	}
+
+	converted := map[string]interface{}{
+		"model":    model,
+		"messages": messages,
+	}
+
+	if stream, ok := req["stream"]; ok {
+		converted["stream"] = stream
+	}
+
+	result, err := json.Marshal(converted)
+	if err != nil {
+		return body, false
+	}
+
+	return result, true
+}
+
 // extractTextFromContent extracts text from various content formats
 func extractTextFromContent(content interface{}) string {
 	switch v := content.(type) {
 	case string:
 		return v
+	case float64:
+		return fmt.Sprintf("%v", v)
 	case []interface{}:
 		var sb strings.Builder
 		for _, item := range v {
