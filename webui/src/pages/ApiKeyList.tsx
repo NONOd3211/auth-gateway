@@ -46,7 +46,7 @@ export function ApiKeyList() {
           <tr>
             <th style={styles.th}>名称</th>
             <th style={styles.th}>Key</th>
-            <th style={styles.th}>状态</th>
+            <th style={styles.th}>可用模型</th>
             <th style={styles.th}>健康状态</th>
             <th style={styles.th}>失败次数</th>
             <th style={styles.th}>创建时间</th>
@@ -61,13 +61,11 @@ export function ApiKeyList() {
                 <code style={styles.code}>{maskKey(key.key)}</code>
               </td>
               <td style={styles.td}>
-                <span style={{
-                  ...styles.status,
-                  background: key.enabled ? '#4CAF50' : '#999',
-                  color: '#fff',
-                }}>
-                  {key.enabled ? '启用' : '禁用'}
-                </span>
+                {key.allowed_models ? (
+                  <span style={styles.models}>{key.allowed_models}</span>
+                ) : (
+                  <span style={styles.noModels}>-</span>
+                )}
               </td>
               <td style={styles.td}>
                 <span style={{
@@ -85,6 +83,9 @@ export function ApiKeyList() {
                   <button onClick={() => handleToggle(key)} style={styles.actionBtn}>
                     {key.enabled ? '禁用' : '启用'}
                   </button>
+                  <Link to={`/keys/${key.id}`} style={{ ...styles.actionBtn, background: '#FF9800', color: '#fff', textDecoration: 'none' }}>
+                    编辑
+                  </Link>
                   <button onClick={() => handleDelete(key.id)} style={{ ...styles.actionBtn, background: '#f44336', color: '#fff' }}>
                     删除
                   </button>
@@ -157,6 +158,13 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '0.25rem 0.5rem',
     borderRadius: '4px',
     fontSize: '0.75rem',
+  },
+  models: {
+    fontSize: '0.75rem',
+    color: '#1976D2',
+  },
+  noModels: {
+    color: '#999',
   },
   actions: {
     display: 'flex',

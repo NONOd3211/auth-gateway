@@ -5,14 +5,15 @@ import (
 )
 
 type APIKey struct {
-	ID        string     `json:"id" gorm:"primaryKey"`
-	Key       string     `json:"key" gorm:"size:200"`        // MiniMax API Key
-	Name      string     `json:"name" gorm:"size:100"`       // 名称备注
-	Enabled   bool       `json:"enabled" gorm:"default:true"`
-	Healthy   bool       `json:"healthy" gorm:"default:true"`
-	FailedAt  *time.Time `json:"failed_at"`
-	FailCount int        `json:"fail_count" gorm:"default:0"`
-	CreatedAt time.Time  `json:"created_at"`
+	ID           string     `json:"id" gorm:"primaryKey"`
+	Key          string     `json:"key" gorm:"size:200"`        // MiniMax API Key
+	Name         string     `json:"name" gorm:"size:100"`       // 名称备注
+	AllowedModels string    `json:"allowed_models" gorm:"size:500"` // 允许的模型，逗号分隔
+	Enabled      bool       `json:"enabled" gorm:"default:true"`
+	Healthy      bool       `json:"healthy" gorm:"default:true"`
+	FailedAt     *time.Time `json:"failed_at"`
+	FailCount    int        `json:"fail_count" gorm:"default:0"`
+	CreatedAt    time.Time  `json:"created_at"`
 }
 
 type TokenKeyMapping struct {

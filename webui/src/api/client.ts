@@ -35,6 +35,7 @@ export interface APIKey {
   id: string
   key: string
   name: string
+  allowed_models: string
   enabled: boolean
   healthy: boolean
   fail_count: number
@@ -75,7 +76,7 @@ export const tokenApi = {
 
 export const apiKeyApi = {
   list: () => api.get<{ keys: APIKey[] }>('/keys'),
-  create: (data: { key: string; name: string }) => api.post('/keys', data),
+  create: (data: { key: string; name: string; allowed_models?: string }) => api.post('/keys', data),
   update: (id: string, data: Partial<APIKey>) => api.put(`/keys/${id}`, data),
   delete: (id: string) => api.delete(`/keys/${id}`),
   enable: (id: string) => api.post(`/keys/${id}/enable`),

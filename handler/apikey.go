@@ -4,6 +4,7 @@ import (
 	"auth-gateway/database"
 	"auth-gateway/models"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -20,8 +21,9 @@ func ListAPIKeys(c *gin.Context) {
 
 func CreateAPIKey(c *gin.Context) {
 	var req struct {
-		Key  string `json:"key" binding:"required"`
-		Name string `json:"name"`
+		Key           string `json:"key" binding:"required"`
+		Name          string `json:"name"`
+		AllowedModels string `json:"allowed_models"` // comma-separated model list
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -29,12 +31,13 @@ func CreateAPIKey(c *gin.Context) {
 	}
 
 	key := models.APIKey{
-		ID:        uuid.New().String(),
-		Key:       req.Key,
-		Name:      req.Name,
-		Enabled:   true,
-		Healthy:   true,
-		FailCount: 0,
+		ID:             uuid.New().String(),
+		Key:            req.Key,
+		Name:           req.Name,
+		AllowedModels:  req.AllowedModels,
+		Enabled:        true,
+		Healthy:        true,
+		FailCount:      0,
 	}
 
 	if err := database.DB.Create(&key).Error; err != nil {
@@ -59,8 +62,9 @@ func UpdateAPIKey(c *gin.Context) {
 	}
 
 	var req struct {
-		Name    string `json:"name"`
-		Enabled *bool  `json:"enabled"`
+		Name          string `json:"name"`
+		AllowedModels string `json:"allowed_models"`
+		Enabled       *bool  `json:"enabled"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -69,6 +73,9 @@ func UpdateAPIKey(c *gin.Context) {
 
 	if req.Name != "" {
 		key.Name = req.Name
+	}
+	if req.AllowedModels != "" {
+		key.AllowedModels = req.AllowedModels
 	}
 	if req.Enabled != nil {
 		key.Enabled = *req.Enabled
@@ -145,4 +152,37 @@ func DisableAPIKey(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"key": key})
+}
+
+// ListModels returns all available models from all enabled API keys
+func ListModels(c *gin.Context) {
+	var keys []models.APIKey
+	if err := database.DB.Where("enabled = ?", true).Find(&keys).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Collect unique models from all API keys
+	modelSet := make(map[string]bool)
+	for _, key := range keys {
+		if key.AllowedModels != "" {
+			// Split by comma and add each model
+			models := strings.Split(key.AllowedModels, ",")
+			for _, m := range models {
+				m = strings.TrimSpace(m)
+				if m != "" {
+					modelSet[m] = true
+				}
+			}
+		}
+	}
+
+	models := make([]string, 0, len(modelSet))
+	for model := range modelSet {
+		models = append(models, model)
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"models": models,
+	})
 }

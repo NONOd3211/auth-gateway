@@ -113,6 +113,7 @@ func runUserPanel(cfg *config.Config) {
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
+	r.GET("/v1/models", handler.ListModels)
 
 	log.Printf("👤 User panel listening on :%s", cfg.Port)
 	if err := r.Run(":" + cfg.Port); err != nil {

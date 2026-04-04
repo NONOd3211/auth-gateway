@@ -1,41 +1,45 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 import { apiKeyApi } from '../api/client'
 
-export function ApiKeyCreate() {
+export function ApiKeyEdit() {
+  const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const [loading, setLoading] = useState(true)
   const [form, setForm] = useState({
-    key: '',
     name: '',
     allowed_models: '',
   })
 
+  useEffect(() => {
+    if (!id) return
+    apiKeyApi.list().then((res) => {
+      const key = res.data.keys.find((k: any) => k.id === id)
+      if (key) {
+        setForm({
+          name: key.name || '',
+          allowed_models: key.allowed_models || '',
+        })
+      }
+    }).finally(() => setLoading(false))
+  }, [id])
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    await apiKeyApi.create({
-      key: form.key,
+    if (!id) return
+    await apiKeyApi.update(id, {
       name: form.name,
       allowed_models: form.allowed_models,
     })
     navigate('/keys')
   }
 
+  if (loading) return <div style={styles.loading}>加载中...</div>
+
   return (
     <div style={styles.container}>
-      <h1 style={styles.title}>+ 新建 API Key</h1>
+      <h1 style={styles.title}>✏️ 编辑 API Key</h1>
       <form onSubmit={handleSubmit} style={styles.form}>
-        <div style={styles.field}>
-          <label style={styles.label}>Key *</label>
-          <input
-            type="text"
-            value={form.key}
-            onChange={(e) => setForm({ ...form, key: e.target.value })}
-            placeholder="请输入 API Key"
-            required
-            style={styles.input}
-          />
-        </div>
-
         <div style={styles.field}>
           <label style={styles.label}>名称</label>
           <input
@@ -60,7 +64,7 @@ export function ApiKeyCreate() {
         </div>
 
         <div style={styles.buttons}>
-          <button type="submit" style={styles.submitBtn}>创建</button>
+          <button type="submit" style={styles.submitBtn}>保存</button>
           <button type="button" onClick={() => navigate('/keys')} style={styles.cancelBtn}>取消</button>
         </div>
       </form>
@@ -69,6 +73,11 @@ export function ApiKeyCreate() {
 }
 
 const styles: Record<string, React.CSSProperties> = {
+  loading: {
+    textAlign: 'center',
+    padding: '2rem',
+    color: '#666',
+  },
   container: {
     maxWidth: '600px',
   },

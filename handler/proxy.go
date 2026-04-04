@@ -90,6 +90,23 @@ func ProxyRequest(cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 
+		// Validate model is allowed for this API key
+		if apiKey.AllowedModels != "" {
+			allowedList := strings.Split(apiKey.AllowedModels, ",")
+			allowed := false
+			for _, m := range allowedList {
+				if strings.TrimSpace(m) == model {
+					allowed = true
+					break
+				}
+			}
+			if !allowed {
+				recordUsage(tokenID, c.Request.URL.Path, model, 0, 0, 0, false, "model not allowed for this API key")
+				c.JSON(http.StatusForbidden, gin.H{"error": "model '" + model + "' is not allowed for this API key"})
+				return
+			}
+		}
+
 		// Forward request using the selected provider
 		resp, err := provider.Execute(c.Request, apiKey.Key)
 		if err != nil {
