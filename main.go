@@ -9,6 +9,7 @@ import (
 	"auth-gateway/providers"
 	"auth-gateway/providers/anthropic"
 	"auth-gateway/providers/minimax"
+	wsrelay "auth-gateway/wsrelay"
 	"fmt"
 	"log"
 	"os"
@@ -170,17 +171,23 @@ func runAdminPanel(cfg *config.Config) {
 func runProxy(cfg *config.Config) {
 	handler.SetProviderManager(providerManager)
 
+	wsServer := wsrelay.NewServer(providerManager)
+
 	r := gin.New()
 	r.Use(gin.Recovery())
 	r.Use(middleware.CORS(cfg.AllowedOrigins))
 
-	// Proxy routes (token auth)
+	// HTTP proxy routes (token auth)
 	proxy := r.Group("/")
 	proxy.Use(middleware.TokenAuth())
 	{
 		proxy.Any("/v1/*path", handler.ProxyRequest(cfg))
 		proxy.Any("/v1beta/*path", handler.ProxyRequest(cfg))
 	}
+
+	// WebSocket proxy endpoint
+	r.GET("/v1/ws", gin.WrapH(wsServer))
+	r.GET("/v1beta/ws", gin.WrapH(wsServer))
 
 	log.Printf("🔑 Proxy listening on :%s", cfg.ProxyPort)
 	if err := r.Run(":" + cfg.ProxyPort); err != nil {
