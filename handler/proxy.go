@@ -442,6 +442,7 @@ func handleAnthropicStreamingResponse(c *gin.Context, resp *http.Response, token
 
 	lineCount := 0
 	totalOutputTokens := 0
+	var lastContent strings.Builder
 
 	for {
 		line, err := reader.ReadString('\n')
@@ -455,27 +456,33 @@ func handleAnthropicStreamingResponse(c *gin.Context, resp *http.Response, token
 		lineCount++
 		trimmed := strings.TrimSpace(line)
 
-		// Skip empty lines
 		if trimmed == "" {
 			continue
 		}
 
-		// Parse OpenAI SSE format
 		if !strings.HasPrefix(trimmed, "data: ") {
+			log.Printf("[DEBUG] token=%s non-data line %d: %s", tokenID, lineCount, trimmed)
 			continue
 		}
 
 		data := strings.TrimPrefix(trimmed, "data: ")
 		if data == "[DONE]" {
+			log.Printf("[DEBUG] token=%s received [DONE] marker at line %d", tokenID, lineCount)
 			break
 		}
 
+		dataPreview := data
+		if len(dataPreview) > 200 {
+			dataPreview = dataPreview[:200] + "..."
+		}
+		log.Printf("[DEBUG] token=%s upstream chunk %d: %s", tokenID, lineCount, dataPreview)
+
 		var openaiChunk map[string]interface{}
 		if err := json.Unmarshal([]byte(data), &openaiChunk); err != nil {
+			log.Printf("[ERROR] token=%s failed to parse chunk JSON: %v", tokenID, err)
 			continue
 		}
 
-		// Convert to Anthropic format
 		anthropicChunk := convertOpenAIChunkToAnthropicChunk(openaiChunk)
 		if anthropicChunk != nil {
 			chunkJSON, _ := json.Marshal(anthropicChunk)
@@ -484,17 +491,19 @@ func handleAnthropicStreamingResponse(c *gin.Context, resp *http.Response, token
 			flusher.Flush()
 			totalOutputTokens++
 
-			// Log preview
 			if content, ok := anthropicChunk["delta"].(map[string]interface{}); ok {
 				if text, ok := content["text"].(string); ok && text != "" {
-					preview := text
-					if len(preview) > 80 {
-						preview = preview[:80] + "..."
-					}
-					log.Printf("[DEBUG] token=%s anthropic stream line %d: %s", tokenID, lineCount, preview)
+					lastContent.WriteString(text)
 				}
 			}
 		}
+	}
+
+	lastContentStr := lastContent.String()
+	if len(lastContentStr) > 200 {
+		log.Printf("[DEBUG] token=%s total content preview: %s...", tokenID, lastContentStr[:200])
+	} else {
+		log.Printf("[DEBUG] token=%s total content: %s", tokenID, lastContentStr)
 	}
 
 	// Send content_block_stop event
@@ -554,13 +563,27 @@ func convertOpenAIChunkToAnthropicChunk(openaiChunk map[string]interface{}) map[
 		return nil
 	}
 
-	choice := choices[0].(map[string]interface{})
-	delta, ok := choice["delta"].(map[string]interface{})
+	choice, ok := choices[0].(map[string]interface{})
 	if !ok {
 		return nil
 	}
 
-	// Handle content
+	delta, ok := choice["delta"].(map[string]interface{})
+	if !ok {
+		if finishReason, ok := choice["finish_reason"].(string); ok && finishReason != "" {
+			return map[string]interface{}{
+				"type": "message_delta",
+				"delta": map[string]interface{}{
+					"stop_reason": finishReason,
+				},
+				"usage": map[string]interface{}{
+					"output_tokens": 0,
+				},
+			}
+		}
+		return nil
+	}
+
 	if content, ok := delta["content"].(string); ok && content != "" {
 		return map[string]interface{}{
 			"type":  "content_block_delta",
@@ -568,6 +591,18 @@ func convertOpenAIChunkToAnthropicChunk(openaiChunk map[string]interface{}) map[
 			"delta": map[string]interface{}{
 				"type": "text_delta",
 				"text": content,
+			},
+		}
+	}
+
+	if finishReason, ok := choice["finish_reason"].(string); ok && finishReason != "" {
+		return map[string]interface{}{
+			"type": "message_delta",
+			"delta": map[string]interface{}{
+				"stop_reason": finishReason,
+			},
+			"usage": map[string]interface{}{
+				"output_tokens": 0,
 			},
 		}
 	}
