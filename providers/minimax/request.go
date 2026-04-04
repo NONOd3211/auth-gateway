@@ -74,27 +74,45 @@ func detectAndConvertFormat(body []byte) ([]byte, bool) {
 		return body, false
 	}
 
+	// Case 1: Check if messages array has Anthropic-style content blocks
+	if messages, hasMessages := req["messages"].([]interface{}); hasMessages && len(messages) > 0 {
+		if firstMsg, ok := messages[0].(map[string]interface{}); ok {
+			if content, hasContent := firstMsg["content"]; hasContent {
+				// Check if content is Anthropic blocks format
+				if contentArr, ok := content.([]interface{}); ok && len(contentArr) > 0 {
+					if isAnthropicFormat(contentArr) {
+						return convertAnthropicMessagesToOpenAI(body, req, messages)
+					}
+					// Check if content is already OpenAI string format
+					if contentStr, ok := content.(string); ok && contentStr != "" {
+						log.Printf("[MiniMax] Content is string format in messages, no conversion needed")
+						return body, false
+					}
+				}
+			}
+		}
+	}
+
+	// Case 2: Top-level content field (some providers)
 	content, hasContent := req["content"]
 	if !hasContent {
-		// No content field, already OpenAI format or other
 		return body, false
 	}
 
-	// Case 1: OpenAI format - content is string
+	// OpenAI format - content is string
 	if contentStr, ok := content.(string); ok && contentStr != "" {
 		log.Printf("[MiniMax] Content is string format, no conversion needed")
 		return body, false
 	}
 
-	// Case 2: Anthropic format - content is array of blocks
+	// Anthropic format - content is array of blocks
 	if contentArr, ok := content.([]interface{}); ok && len(contentArr) > 0 {
-		// Check if this is Anthropic format (blocks have "type" field)
 		if isAnthropicFormat(contentArr) {
 			return convertAnthropicToOpenAIMessages(body, req, contentArr)
 		}
 	}
 
-	// Case 3: content is array of message objects (some providers use this)
+	// Messages array format
 	if contentArr, ok := content.([]interface{}); ok && len(contentArr) > 0 {
 		if isMessagesArray(contentArr) {
 			return convertMessagesArrayToOpenAI(body, req, contentArr)
@@ -126,6 +144,50 @@ func isMessagesArray(contentArr []interface{}) bool {
 		}
 	}
 	return false
+}
+
+// convertAnthropicMessagesToOpenAI converts messages with Anthropic content blocks to OpenAI format
+func convertAnthropicMessagesToOpenAI(body []byte, req map[string]interface{}, messages []interface{}) ([]byte, bool) {
+	convertedMessages := []map[string]interface{}{}
+
+	for _, msg := range messages {
+		msgMap, ok := msg.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		role, _ := msgMap["role"].(string)
+		content := msgMap["content"]
+
+		// Extract text from content (could be string or Anthropic blocks)
+		contentStr := extractTextFromContent(content)
+
+		convertedMessages = append(convertedMessages, map[string]interface{}{
+			"role":    role,
+			"content": contentStr,
+		})
+	}
+
+	model := ""
+	if m, ok := req["model"].(string); ok {
+		model = m
+	}
+
+	converted := map[string]interface{}{
+		"model":    model,
+		"messages": convertedMessages,
+	}
+
+	if stream, ok := req["stream"]; ok {
+		converted["stream"] = stream
+	}
+
+	result, err := json.Marshal(converted)
+	if err != nil {
+		return body, false
+	}
+
+	return result, true
 }
 
 // convertAnthropicToOpenAIMessages converts Anthropic format to OpenAI messages format
