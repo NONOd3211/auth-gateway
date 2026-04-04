@@ -5,6 +5,7 @@ import (
 	"auth-gateway/database"
 	"auth-gateway/models"
 	"auth-gateway/providers"
+	"bufio"
 	"bytes"
 	"compress/gzip"
 	"crypto/rand"
@@ -160,15 +161,29 @@ func ProxyRequest(cfg *config.Config) gin.HandlerFunc {
 			c.Header("Content-Type", "text/event-stream")
 			c.Header("Cache-Control", "no-cache")
 			c.Header("Connection", "keep-alive")
-			c.Header("Transfer-Encoding", "chunked")
 			c.Status(resp.StatusCode)
-			c.Stream(func(w io.Writer) bool {
-				_, err := io.Copy(w, resp.Body)
+
+			flusher, ok := c.Writer.(http.Flusher)
+			if !ok {
+				log.Printf("[DEBUG] token=%s path=%s streaming not supported", tokenID, c.Request.URL.Path)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "streaming not supported"})
+				return
+			}
+
+			reader := bufio.NewReader(resp.Body)
+			for {
+				line, err := reader.ReadString('\n')
 				if err != nil {
-					log.Printf("[DEBUG] token=%s path=%s streaming error: %v", tokenID, c.Request.URL.Path, err)
+					if err != io.EOF {
+						log.Printf("[DEBUG] token=%s path=%s streaming read error: %v", tokenID, c.Request.URL.Path, err)
+					}
+					break
 				}
-				return false
-			})
+				c.Writer.WriteString(line)
+				c.Writer.Flush()
+				flusher.Flush()
+			}
+
 			log.Printf("[DEBUG] token=%s path=%s model=%s resp_status=%d streaming completed",
 				tokenID, c.Request.URL.Path, model, resp.StatusCode)
 			recordUsage(tokenID, c.Request.URL.Path, model, 0, 0, 0, true, "streaming")
