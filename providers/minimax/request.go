@@ -35,6 +35,8 @@ func BuildRequest(req *http.Request, apiKey string, upstreamURL string) (*http.R
 	if isConverted {
 		log.Printf("[MiniMax] Converted Anthropic format to OpenAI format")
 		body = convertedBody
+	} else {
+		log.Printf("[MiniMax] No format conversion needed, using original body")
 	}
 
 	// Convert path from OpenAI format to MiniMax format
@@ -176,6 +178,10 @@ func extractTextFromContent(content interface{}) string {
 func convertPath(openaiPath string) string {
 	// /v1/chat/completions -> /v1/text/chatcompletion_v2
 	if openaiPath == "/v1/chat/completions" {
+		return "/v1/text/chatcompletion_v2"
+	}
+	// /v1/messages -> /v1/text/chatcompletion_v2 (Claude Code with ANTHROPIC_BASE_URL)
+	if openaiPath == "/v1/messages" {
 		return "/v1/text/chatcompletion_v2"
 	}
 	// Other paths pass through as-is
