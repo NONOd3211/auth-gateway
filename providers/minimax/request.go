@@ -133,6 +133,17 @@ func isMessagesArray(contentArr []interface{}) bool {
 func convertAnthropicMessagesToOpenAI(body []byte, req map[string]interface{}, messages []interface{}) ([]byte, bool) {
 	convertedMessages := []map[string]interface{}{}
 
+	// Extract system prompt first
+	if system, ok := req["system"]; ok {
+		systemText := extractTextFromContent(system)
+		if systemText != "" {
+			convertedMessages = append(convertedMessages, map[string]interface{}{
+				"role":    "system",
+				"content": systemText,
+			})
+		}
+	}
+
 	for _, msg := range messages {
 		msgMap, ok := msg.(map[string]interface{})
 		if !ok {
