@@ -153,7 +153,7 @@ func CleanupUsageRecords() error {
 
 	result := database.DB.Where("timestamp <= ?", cutoffRecord.Timestamp).
 		Order("timestamp ASC").
-		Limit(deleteCount).
+		Limit(int(deleteCount)).
 		Delete(&models.UsageRecord{})
 
 	return result.Error
