@@ -143,6 +143,17 @@ func ProxyRequest(cfg *config.Config) gin.HandlerFunc {
 			c.JSON(http.StatusBadGateway, gin.H{"error": "failed to read response body"})
 			return
 		}
+		log.Printf("[DEBUG] token=%s path=%s MiniMax response body: %s", tokenID, c.Request.URL.Path, string(body))
+
+		// Check if MiniMax returned an error
+		isError, errorMsg := isMiniMaxError(body)
+		if isError {
+			log.Printf("[DEBUG] token=%s path=%s MiniMax API error: %s", tokenID, c.Request.URL.Path, errorMsg)
+			recordUsage(tokenID, c.Request.URL.Path, model, 0, 0, 0, false, errorMsg)
+			c.JSON(http.StatusBadGateway, gin.H{"error": "MiniMax API error: " + errorMsg})
+			return
+		}
+
 		c.Data(resp.StatusCode, resp.Header.Get("Content-Type"), body)
 
 		// Parse token usage from response
@@ -184,6 +195,7 @@ func parseTokenUsage(body []byte, contentType string) (int, int, int) {
 		return 0, 0, 0
 	}
 
+	// Try MiniMax format with input_tokens/output_tokens
 	var resp struct {
 		Usage struct {
 			InputTokens  int `json:"input_tokens"`
@@ -192,11 +204,44 @@ func parseTokenUsage(body []byte, contentType string) (int, int, int) {
 		} `json:"usage"`
 	}
 
-	if err := json.Unmarshal(body, &resp); err != nil {
-		return 0, 0, 0
+	if err := json.Unmarshal(body, &resp); err == nil && (resp.Usage.InputTokens > 0 || resp.Usage.OutputTokens > 0) {
+		return resp.Usage.InputTokens, resp.Usage.OutputTokens, 0
 	}
 
-	return resp.Usage.InputTokens, resp.Usage.OutputTokens, 0
+	// Try OpenAI format with prompt_tokens/completion_tokens
+	var resp2 struct {
+		Usage struct {
+			PromptTokens int `json:"prompt_tokens"`
+			CompletionTokens int `json:"completion_tokens"`
+			TotalTokens  int `json:"total_tokens"`
+		} `json:"usage"`
+	}
+
+	if err := json.Unmarshal(body, &resp2); err == nil && (resp2.Usage.PromptTokens > 0 || resp2.Usage.CompletionTokens > 0) {
+		return resp2.Usage.PromptTokens, resp2.Usage.CompletionTokens, 0
+	}
+
+	return 0, 0, 0
+}
+
+// isMiniMaxError checks if the response body contains a MiniMax API error
+// Returns (isError, errorMessage)
+func isMiniMaxError(body []byte) (bool, string) {
+	// MiniMax error format: {"type":"error","error":{"type":"...","message":"..."}}
+	var errResp struct {
+		Type  string `json:"type"`
+		Error struct {
+			Type    string `json:"type"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(body, &errResp); err != nil {
+		return false, ""
+	}
+	if errResp.Type == "error" && errResp.Error.Message != "" {
+		return true, errResp.Error.Message
+	}
+	return false, ""
 }
 
 func recordUsage(tokenID, path, model string, inputTokens, outputTokens, cacheTokens int, success bool, errMsg string) {
