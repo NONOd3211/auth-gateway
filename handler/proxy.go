@@ -6,10 +6,12 @@ import (
 	"auth-gateway/models"
 	"auth-gateway/providers"
 	"bytes"
+	"compress/brotli"
 	"compress/gzip"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -146,15 +148,24 @@ func ProxyRequest(cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 
-		// Decompress gzip response if needed (check magic bytes, not header)
+		// Decompress response based on Content-Encoding
+		contentEncoding := resp.Header.Get("Content-Encoding")
 		log.Printf("[DEBUG] token=%s path=%s Content-Encoding=%s Content-Type=%s body[0:2]=%02x%02x",
-			tokenID, c.Request.URL.Path, resp.Header.Get("Content-Encoding"), resp.Header.Get("Content-Type"),
+			tokenID, c.Request.URL.Path, contentEncoding, resp.Header.Get("Content-Type"),
 			body[0], body[1])
-		if len(body) >= 2 && body[0] == 0x1f && body[1] == 0x8b {
+		if contentEncoding == "gzip" || (len(body) >= 2 && body[0] == 0x1f && body[1] == 0x8b) {
 			body, err = decompressGzip(body)
 			if err != nil {
 				log.Printf("[DEBUG] token=%s path=%s gzip decompress error: %v", tokenID, c.Request.URL.Path, err)
 				recordUsage(tokenID, c.Request.URL.Path, model, 0, 0, 0, false, "failed to decompress gzip response")
+				c.JSON(http.StatusBadGateway, gin.H{"error": "failed to decompress response"})
+				return
+			}
+		} else if contentEncoding == "br" || (len(body) >= 2 && body[0] == 0x85 && body[1] == 0x1a) {
+			body, err = decompressBrotli(body)
+			if err != nil {
+				log.Printf("[DEBUG] token=%s path=%s brotli decompress error: %v", tokenID, c.Request.URL.Path, err)
+				recordUsage(tokenID, c.Request.URL.Path, model, 0, 0, 0, false, "failed to decompress brotli response")
 				c.JSON(http.StatusBadGateway, gin.H{"error": "failed to decompress response"})
 				return
 			}
@@ -268,6 +279,15 @@ func decompressGzip(data []byte) ([]byte, error) {
 		return nil, err
 	}
 	defer r.Close()
+	return io.ReadAll(r)
+}
+
+// decompressBrotli decompresses brotli-encoded data
+func decompressBrotli(data []byte) ([]byte, error) {
+	r := brotli.NewReader(bytes.NewReader(data))
+	if r == nil {
+		return nil, fmt.Errorf("failed to create brotli reader")
+	}
 	return io.ReadAll(r)
 }
 
