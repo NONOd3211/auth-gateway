@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"strings"
 )
@@ -23,29 +22,15 @@ func BuildRequest(req *http.Request, apiKey string, upstreamURL string) (*http.R
 	}
 	req.Body.Close()
 
-	// DEBUG: log the request details
-	if len(apiKey) > 10 {
-		log.Printf("[MiniMax] API Key: %s...", apiKey[:10])
-	} else {
-		log.Printf("[MiniMax] API Key: %s", apiKey)
-	}
-	log.Printf("[MiniMax] Body: %s", string(body))
-
 	// Detect format and convert to OpenAI/MiniMax format if needed
 	convertedBody, isConverted := detectAndConvertFormat(body)
 	if isConverted {
-		log.Printf("[MiniMax] Converted format to OpenAI format")
 		body = convertedBody
-	} else {
-		log.Printf("[MiniMax] No format conversion needed")
 	}
 
 	// Convert path from OpenAI format to MiniMax format
 	targetPath := convertPath(req.URL.Path)
 	targetURL := upstreamURL + targetPath
-
-	log.Printf("[MiniMax] Target URL: %s", targetURL)
-	log.Printf("[MiniMax] Original URL path: %s", req.URL.Path)
 
 	proxyReq, err := http.NewRequest(req.Method, targetURL, bytes.NewReader(body))
 	if err != nil {
@@ -85,7 +70,6 @@ func detectAndConvertFormat(body []byte) ([]byte, bool) {
 					}
 					// Check if content is already OpenAI string format
 					if contentStr, ok := content.(string); ok && contentStr != "" {
-						log.Printf("[MiniMax] Content is string format in messages, no conversion needed")
 						return body, false
 					}
 				}
@@ -101,7 +85,6 @@ func detectAndConvertFormat(body []byte) ([]byte, bool) {
 
 	// OpenAI format - content is string
 	if contentStr, ok := content.(string); ok && contentStr != "" {
-		log.Printf("[MiniMax] Content is string format, no conversion needed")
 		return body, false
 	}
 
