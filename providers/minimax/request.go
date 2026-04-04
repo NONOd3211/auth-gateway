@@ -33,6 +33,7 @@ func BuildRequest(req *http.Request, apiKey string, upstreamURL string) (*http.R
 	targetURL := upstreamURL + targetPath
 
 	log.Printf("[MiniMax] Target URL: %s", targetURL)
+	log.Printf("[MiniMax] Original URL path: %s", req.URL.Path)
 
 	proxyReq, err := http.NewRequest(req.Method, targetURL, bytes.NewReader(body))
 	if err != nil {
