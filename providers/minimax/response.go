@@ -1,46 +1,8 @@
 package minimax
 
 import (
-	"bufio"
-	"bytes"
 	"encoding/json"
-	"fmt"
-	"io"
-	"strings"
 )
-
-// ConvertOpenAIToAnthropicStream converts OpenAI SSE stream to Anthropic format
-func ConvertOpenAIToAnthropicStream(reader io.Reader, model string) io.Reader {
-	pr, pw := io.Pipe()
-	go func() {
-		defer pw.Close()
-		scanner := bufio.NewScanner(reader)
-		for scanner.Scan() {
-			line := scanner.Text()
-			if !strings.HasPrefix(line, "data: ") {
-				continue
-			}
-			data := strings.TrimPrefix(line, "data: ")
-			if data == "[DONE]" {
-				pw.Write([]byte("data: {\"type\":\"message_stop\"}\n\n"))
-				continue
-			}
-
-			var openaiResp map[string]interface{}
-			if err := json.Unmarshal([]byte(data), &openaiResp); err != nil {
-				continue
-			}
-
-			// Convert to Anthropic format
-			anthropicResp := convertOpenAIChunkToAnthropic(openaiResp, model)
-			if anthropicResp != nil {
-				jsonData, _ := json.Marshal(anthropicResp)
-				pw.Write([]byte(fmt.Sprintf("data: %s\n\n", jsonData)))
-			}
-		}
-	}()
-	return pr
-}
 
 // ConvertOpenAIToAnthropicResponse converts OpenAI response to Anthropic format
 func ConvertOpenAIToAnthropicResponse(body []byte, model string) ([]byte, error) {
@@ -51,70 +13,6 @@ func ConvertOpenAIToAnthropicResponse(body []byte, model string) ([]byte, error)
 
 	anthropicResp := convertOpenAIResponseToAnthropic(openaiResp, model)
 	return json.Marshal(anthropicResp)
-}
-
-func convertOpenAIChunkToAnthropic(openaiChunk map[string]interface{}, model string) map[string]interface{} {
-	choices, ok := openaiChunk["choices"].([]interface{})
-	if !ok || len(choices) == 0 {
-		return nil
-	}
-
-	choice, ok := choices[0].(map[string]interface{})
-	if !ok {
-		return nil
-	}
-
-	delta, ok := choice["delta"].(map[string]interface{})
-	if !ok {
-		if finishReason, ok := choice["finish_reason"].(string); ok && finishReason != "" {
-			return map[string]interface{}{
-				"type": "message_delta",
-				"delta": map[string]interface{}{
-					"stop_reason": finishReason,
-				},
-				"usage": map[string]interface{}{
-					"output_tokens": 0,
-				},
-			}
-		}
-		return nil
-	}
-
-	if content, ok := delta["content"].(string); ok && content != "" {
-		return map[string]interface{}{
-			"type":  "content_block_delta",
-			"index": 0,
-			"delta": map[string]interface{}{
-				"type": "text_delta",
-				"text": content,
-			},
-		}
-	}
-
-	if reasoningContent, ok := delta["reasoning_content"].(string); ok && reasoningContent != "" {
-		return map[string]interface{}{
-			"type":  "content_block_delta",
-			"index": 0,
-			"delta": map[string]interface{}{
-				"type":     "thinking_delta",
-				"thinking": reasoningContent,
-			},
-		}
-	}
-
-	if finishReason, ok := choice["finish_reason"].(string); ok && finishReason != "" {
-		return map[string]interface{}{
-			"type": "message_delta",
-			"delta": map[string]interface{}{
-				"stop_reason": finishReason,
-			},
-			"usage": map[string]interface{}{
-				"output_tokens": 0,
-			},
-		}
-	}
-
-	return nil
 }
 
 func convertOpenAIResponseToAnthropic(openaiResp map[string]interface{}, model string) map[string]interface{} {
@@ -201,26 +99,4 @@ func IsAnthropicFormatRequest(body []byte) bool {
 	}
 
 	return false
-}
-
-// IsStreamingRequest checks if the request is streaming
-func IsStreamingRequest(body []byte) bool {
-	var req map[string]interface{}
-	if err := json.Unmarshal(body, &req); err != nil {
-		return false
-	}
-	if stream, ok := req["stream"].(bool); ok {
-		return stream
-	}
-	return false
-}
-
-// ReadRequestBody reads and restores the request body
-func ReadRequestBody(reqBody io.ReadCloser) ([]byte, io.ReadCloser, error) {
-	body, err := io.ReadAll(reqBody)
-	if err != nil {
-		return nil, nil, err
-	}
-	reqBody.Close()
-	return body, io.NopCloser(bytes.NewReader(body)), nil
 }

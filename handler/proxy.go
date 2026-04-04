@@ -196,7 +196,7 @@ func ProxyRequest(cfg *config.Config) gin.HandlerFunc {
 		log.Printf("[DEBUG] token=%s path=%s MiniMax response body: %s", tokenID, c.Request.URL.Path, string(body))
 
 		// Check if MiniMax returned an error
-		isError, errorMsg := isMiniMaxError(body)
+		isError, errorMsg := isAPIError(body)
 		if isError {
 			log.Printf("[DEBUG] token=%s path=%s MiniMax API error: %s", tokenID, c.Request.URL.Path, errorMsg)
 			recordUsage(tokenID, c.Request.URL.Path, model, 0, 0, 0, false, errorMsg)
@@ -688,10 +688,10 @@ func parseTokenUsage(body []byte, contentType string) (int, int, int) {
 	return 0, 0, 0
 }
 
-// isMiniMaxError checks if the response body contains a MiniMax API error
+// isAPIError checks if the response body contains an API error
 // Returns (isError, errorMessage)
-func isMiniMaxError(body []byte) (bool, string) {
-	// MiniMax error format: {"type":"error","error":{"type":"...","message":"..."}}
+func isAPIError(body []byte) (bool, string) {
+	// Error format: {"type":"error","error":{"type":"...","message":"..."}}
 	var errResp struct {
 		Type  string `json:"type"`
 		Error struct {

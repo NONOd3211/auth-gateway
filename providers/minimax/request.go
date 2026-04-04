@@ -9,12 +9,6 @@ import (
 	"strings"
 )
 
-type ChatRequest struct {
-	Model    string                   `json:"model"`
-	Messages []map[string]interface{} `json:"messages"`
-	Stream   bool                     `json:"stream,omitempty"`
-}
-
 func BuildRequest(req *http.Request, apiKey string, upstreamURL string) (*http.Request, bool, error) {
 	body, err := io.ReadAll(req.Body)
 	if err != nil {
