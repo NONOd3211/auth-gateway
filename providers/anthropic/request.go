@@ -41,9 +41,9 @@ func BuildRequest(req *http.Request, apiKey string, baseURL string) (*http.Reque
 	proxyReq.Header.Set("x-api-key", apiKey)
 	proxyReq.Header.Set("anthropic-version", "2023-06-01")
 
-	// Copy other headers except Host and Content-Length
+	// Copy other headers except Host, Content-Length, Authorization (we set our own)
 	for key, values := range req.Header {
-		if key == "Host" || key == "Content-Length" || key == "x-api-key" || key == "anthropic-version" {
+		if key == "Host" || key == "Content-Length" || key == "x-api-key" || key == "anthropic-version" || key == "Authorization" {
 			continue
 		}
 		proxyReq.Header[key] = values

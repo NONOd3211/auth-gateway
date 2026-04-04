@@ -31,9 +31,9 @@ func BuildRequest(req *http.Request, apiKey string, upstreamURL string) (*http.R
 	proxyReq.Header.Set("Content-Type", "application/json")
 	proxyReq.Header.Set("Authorization", "Bearer "+apiKey)
 
-	// Copy other headers except Host
+	// Copy other headers except Host and Authorization (we set our own)
 	for key, values := range req.Header {
-		if key == "Host" || key == "Content-Length" {
+		if key == "Host" || key == "Content-Length" || key == "Authorization" {
 			continue
 		}
 		proxyReq.Header[key] = values
