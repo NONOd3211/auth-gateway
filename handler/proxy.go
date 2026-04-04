@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -26,6 +27,9 @@ func SetProviderManager(pm *providers.ProviderManager) {
 
 func ProxyRequest(cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		log.Printf("[DEBUG] REQUEST_START method=%s path=%s remote=%s",
+			c.Request.Method, c.Request.URL.Path, c.ClientIP())
+
 		tokenIDValue, exists := c.Get("token_id")
 		if !exists {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
@@ -38,6 +42,8 @@ func ProxyRequest(cfg *config.Config) gin.HandlerFunc {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token id type"})
 			return
 		}
+
+		log.Printf("[DEBUG] REQUEST_TOKEN tokenID=%s path=%s", tokenID, c.Request.URL.Path)
 
 		// Check token limits
 		var token models.Token
@@ -108,9 +114,12 @@ func ProxyRequest(cfg *config.Config) gin.HandlerFunc {
 		}
 
 		// Forward request using the selected provider
+		log.Printf("[DEBUG] token=%s path=%s model=%s provider=%s calling Execute",
+			tokenID, c.Request.URL.Path, model, provider.Name())
 		resp, err := provider.Execute(c.Request, apiKey.Key)
 		if err != nil {
 			recordUsage(tokenID, c.Request.URL.Path, model, 0, 0, 0, false, err.Error())
+			log.Printf("[DEBUG] token=%s path=%s ERROR Execute: %v", tokenID, c.Request.URL.Path, err)
 			c.JSON(http.StatusBadGateway, gin.H{"error": "upstream error: " + err.Error()})
 			return
 		}
@@ -130,6 +139,7 @@ func ProxyRequest(cfg *config.Config) gin.HandlerFunc {
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
 			recordUsage(tokenID, c.Request.URL.Path, model, 0, 0, 0, false, "failed to read response body: "+err.Error())
+			log.Printf("[DEBUG] token=%s path=%s ERROR ReadAll: %v", tokenID, c.Request.URL.Path, err)
 			c.JSON(http.StatusBadGateway, gin.H{"error": "failed to read response body"})
 			return
 		}
@@ -138,6 +148,8 @@ func ProxyRequest(cfg *config.Config) gin.HandlerFunc {
 		// Parse token usage from response
 		inputTokens, outputTokens, cacheTokens := parseTokenUsage(body, resp.Header.Get("Content-Type"))
 
+		log.Printf("[DEBUG] token=%s path=%s model=%s resp_status=%d input=%d output=%d calling recordUsage success=true",
+			tokenID, c.Request.URL.Path, model, resp.StatusCode, inputTokens, outputTokens)
 		recordUsage(tokenID, c.Request.URL.Path, model, inputTokens, outputTokens, cacheTokens, true, "")
 
 		// Update usage count synchronously to avoid race conditions
