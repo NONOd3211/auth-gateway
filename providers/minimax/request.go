@@ -19,7 +19,10 @@ func BuildRequest(req *http.Request, apiKey string, upstreamURL string) (*http.R
 	}
 	req.Body.Close()
 
-	targetURL := upstreamURL + req.URL.Path
+	// Convert path from OpenAI format to MiniMax format
+	targetPath := convertPath(req.URL.Path)
+	targetURL := upstreamURL + targetPath
+
 	proxyReq, err := http.NewRequest(req.Method, targetURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
@@ -37,4 +40,14 @@ func BuildRequest(req *http.Request, apiKey string, upstreamURL string) (*http.R
 	}
 
 	return proxyReq, nil
+}
+
+// convertPath converts OpenAI-style paths to MiniMax-specific paths
+func convertPath(openaiPath string) string {
+	// /v1/chat/completions -> /v1/text/chatcompletion_v2
+	if openaiPath == "/v1/chat/completions" {
+		return "/v1/text/chatcompletion_v2"
+	}
+	// Other paths pass through as-is
+	return openaiPath
 }
